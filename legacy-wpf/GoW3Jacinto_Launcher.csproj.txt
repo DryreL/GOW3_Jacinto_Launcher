@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>GoW3Jacinto_Launcher</AssemblyName>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>True</UseWPF>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>11.0</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <RootNamespace />
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The self-test is a separate executable.  Do not glob its source or its
+         generated obj files into the WPF launcher assembly. -->
+    <Compile Remove="tests\**\*.cs" />
+    <EmbeddedResource Remove="tests\**\*" />
+    <None Remove="tests\**\*" />
+    <Compile Remove="JacintoLauncher\App.cs" />
+    <Compile Remove="JacintoLauncher\KeyCapture.cs" />
+    <Compile Remove="JacintoLauncher\MainWindow.cs" />
+    <None Remove="assets\bg.png" />
+    <None Remove="optionswindow.baml" />
+    <None Remove="assets\icon256.png" />
+    <None Remove="mainwindow.baml" />
+    <None Remove="assets\disc.png" />
+    <None Remove="app.baml" />
+    <Resource Include="assets\bg.png" />
+    <EmbeddedResource Include="optionswindow.baml" LogicalName="optionswindow.baml" />
+    <Resource Include="assets\icon256.png" />
+    <EmbeddedResource Include="mainwindow.baml" LogicalName="mainwindow.baml" />
+    <Resource Include="assets\disc.png" />
+    <EmbeddedResource Include="app.baml" LogicalName="app.baml" />
+    <Content Include="tools\MultipatchSettings.ps1" Link="tools\MultipatchSettings.ps1" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup />
+</Project>

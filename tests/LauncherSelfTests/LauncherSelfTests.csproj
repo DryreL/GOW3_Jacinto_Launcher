@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup>
+  <ItemGroup><Compile Include="..\..\JacintoLauncher\MultipatchBridge.cs" Link="MultipatchBridge.cs" /><Compile Include="..\..\JacintoLauncher\LauncherDiagnostics.cs" Link="LauncherDiagnostics.cs" /><Compile Include="..\..\JacintoLauncher\LauncherConfig.cs" Link="LauncherConfig.cs" /><Compile Include="..\..\JacintoLauncher\GameLayout.cs" Link="GameLayout.cs" /><Compile Include="..\..\JacintoLauncher\NetworkMode.cs" Link="NetworkMode.cs" /></ItemGroup>
+<ItemGroup><Compile Include="..\..\JacintoLauncher\IntroSettings.cs" Link="IntroSettings.cs" /></ItemGroup><ItemGroup><Compile Include="..\..\JacintoLauncher\LaunchLifecycle.cs" Link="LaunchLifecycle.cs" /></ItemGroup></Project>

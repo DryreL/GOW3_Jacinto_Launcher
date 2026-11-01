@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>GoW3Jacinto_Launcher</AssemblyName>
+    <RootNamespace>JacintoLauncher</RootNamespace>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <Deterministic>true</Deterministic>
+    <!-- The folder publish is deliberate: a single-file bundle unpacks native
+         libraries to %TEMP% at startup, which antivirus heuristics dislike. -->
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- File metadata: unidentified binaries score worse with antivirus heuristics. -->
+    <Version>0.4.0</Version>
+    <Company>Project Jacinto Community</Company>
+    <Product>Gears of War 3 Jacinto Launcher</Product>
+    <AssemblyTitle>Gears of War 3 Jacinto Launcher</AssemblyTitle>
+    <Description>Game launcher and settings manager for Gears of War 3: Jacinto.</Description>
+    <Copyright>Refresh, DryreL and the Project Jacinto community</Copyright>
+    <!-- Paste the values here, or set them as environment variables / CI secrets.
+         Empty values turn the matching service off. -->
+    <JacintoSentryDsn Condition="'$(JacintoSentryDsn)' == ''"></JacintoSentryDsn>
+    <JacintoAptabaseKey Condition="'$(JacintoAptabaseKey)' == ''"></JacintoAptabaseKey>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="SentryDsn" Value="$(JacintoSentryDsn)" />
+    <AssemblyMetadata Include="AptabaseKey" Value="$(JacintoAptabaseKey)" />
+    <InternalsVisibleTo Include="LauncherSelfTests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The self-test is a separate executable; the old WPF sources are kept for reference only. -->
+    <Compile Remove="tests\**\*.cs;legacy-wpf\**\*;bin\**\*;obj\**\*;dist\**\*" />
+    <AvaloniaXaml Remove="legacy-wpf\**\*;dist\**\*" />
+    <None Remove="tests\**\*;legacy-wpf\**\*;dist\**\*" />
+    <EmbeddedResource Remove="tests\**\*;legacy-wpf\**\*;dist\**\*" />
+    <AvaloniaResource Include="assets\**" />
+    <AvaloniaResource Include="app.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
+    <PackageReference Include="Sentry" Version="6.12.1" />
+  </ItemGroup>
+</Project>
