@@ -280,7 +280,10 @@ try
     {
         var lnk = DesktopShortcut.Create(temp, Environment.ProcessPath!, "Jacinto Test");
         var lnkBytes = File.ReadAllBytes(lnk);
-        Check(lnkBytes[0] == 0x4C && System.Text.Encoding.Unicode.GetString(lnkBytes).Contains("Jacinto Test") && System.Text.Encoding.ASCII.GetString(lnkBytes).Contains(Path.GetFileName(Environment.ProcessPath!)), "desktop shortcut holds its target and description");
+        // Searched as bytes: the text can start at an odd offset, and Windows does not always store the target's name as ASCII.
+        bool Holds(string text, System.Text.Encoding encoding) => lnkBytes.AsSpan().IndexOf(encoding.GetBytes(text)) >= 0;
+        var target = Path.GetFileName(Environment.ProcessPath!);
+        Check(lnkBytes[0] == 0x4C && Holds("Jacinto Test", System.Text.Encoding.Unicode) && (Holds(target, System.Text.Encoding.ASCII) || Holds(target, System.Text.Encoding.Unicode)), "desktop shortcut holds its target and description");
         File.Delete(lnk);
     }
     var vdf = SteamShortcut.Merge(null, @"C:\Game\L.exe", null);
