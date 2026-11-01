@@ -29,6 +29,7 @@ jobs:
     needs: test
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - { os: windows-latest, rid: win-x64 }
@@ -49,7 +50,7 @@ jobs:
         run: |
           gh release download patch-data --repo "$GITHUB_REPOSITORY" --dir patch-data --pattern 'multipatch.jcpatch*'
           expected="$(tr -d '[:space:]' < patch-data/multipatch.jcpatch.sha256 | tr '[:upper:]' '[:lower:]')"
-          actual="$(shasum -a 256 patch-data/multipatch.jcpatch | cut -d' ' -f1)"
+          actual="$(if command -v sha256sum > /dev/null; then sha256sum patch-data/multipatch.jcpatch; else shasum -a 256 patch-data/multipatch.jcpatch; fi | cut -d' ' -f1)"
           [ "$actual" = "$expected" ] || { echo "multipatch.jcpatch failed its SHA-256 check."; exit 1; }
       - name: Publish
         shell: bash
