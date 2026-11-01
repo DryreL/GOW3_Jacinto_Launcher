@@ -38,8 +38,7 @@ if ((Read-Host "Push main, tag $tag and publish? Type yes") -cne 'yes') { Write-
 
 RunGit push origin main | Out-Null
 # A prerelease: GitHub's "latest" and the launcher's update check both skip it.
-& gh release view patch-data --json name 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) { RunGh release create patch-data --prerelease --latest=false --title 'Patch data for CI' --notes 'multipatch.jcpatch, read by the build workflow. Not a launcher release.' }
+if (@(& gh release list --limit 100 --json tagName --jq '.[].tagName') -notcontains 'patch-data') { RunGh release create patch-data --prerelease --latest=false --title 'Patch data for CI' --notes 'multipatch.jcpatch, read by the build workflow. Not a launcher release.' }
 RunGh release upload patch-data @($assets.FullName) --clobber
 RunGit tag -a $tag -m $tag
 RunGit push origin $tag | Out-Null
