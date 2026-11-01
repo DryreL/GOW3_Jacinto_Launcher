@@ -1,0 +1,125 @@
+name: build
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write      # GitHub artifact attestation (free provenance, not an Authenticode signature)
+  attestations: write
+  actions: read        # SignPath reads the unsigned artifact and the build's origin
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project tests/LauncherSelfTests -c Release
+
+  publish:
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64 }
+          - { os: ubuntu-latest, rid: linux-x64 }
+          - { os: macos-latest, rid: osx-arm64 }
+          - { os: macos-latest, rid: osx-x64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      # The patch data is not in the repository. Publish-Release.ps1 puts it on the "patch-data" release before it tags.
+      - name: Get patch data
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download patch-data --repo "$GITHUB_REPOSITORY" --dir patch-data --pattern 'multipatch.jcpatch*'
+          expected="$(tr -d '[:space:]' < patch-data/multipatch.jcpatch.sha256 | tr '[:upper:]' '[:lower:]')"
+          actual="$(shasum -a 256 patch-data/multipatch.jcpatch | cut -d' ' -f1)"
+          [ "$actual" = "$expected" ] || { echo "multipatch.jcpatch failed its SHA-256 check."; exit 1; }
+      - name: Publish
+        shell: bash
+        env:
+          JacintoSentryDsn: ${{ secrets.SENTRY_DSN }}
+          JacintoAptabaseKey: ${{ secrets.APTABASE_APP_KEY }}
+          JacintoEmbedPatch: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: dotnet publish GoW3Jacinto_Launcher.csproj -c Release -r ${{ matrix.rid }} -o publish/${{ matrix.rid }}
+      - name: Upload for signing
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-${{ matrix.rid }}
+          path: publish/${{ matrix.rid }}
+      # Windows Authenticode signing through SignPath Foundation (free for open source).
+      # Runs once the SIGNPATH_ORGANIZATION_ID variable and SIGNPATH_API_TOKEN secret exist; see DEVELOPMENT.md.
+      - name: Sign
+        if: matrix.rid == 'win-x64' && startsWith(github.ref, 'refs/tags/') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: GOW3_Jacinto_Launcher
+          signing-policy-slug: release-signing
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+      - name: Use signed files
+        if: matrix.rid == 'win-x64' && startsWith(github.ref, 'refs/tags/') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: bash
+        run: rm -rf publish/win-x64 && mv signed publish/win-x64
+      - name: Attest provenance
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: publish/${{ matrix.rid }}/GoW3Jacinto_Launcher*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GoW3Jacinto_Launcher-${{ matrix.rid }}
+          path: publish/${{ matrix.rid }}
+
+  # The same names as dist/. The launcher's update check reads them and SHA256SUMS.txt; see LauncherUpdate.cs.
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: GoW3Jacinto_Launcher-*
+      - name: Zip and checksum
+        run: |
+          for dir in GoW3Jacinto_Launcher-*/; do
+            rid="${dir%/}"
+            case "${rid#GoW3Jacinto_Launcher-}" in
+              win-x64) platform=Windows_x64 ;;
+              linux-x64) platform=Linux_x64 ;;
+              osx-arm64) platform=macOS_arm64 ;;
+              osx-x64) platform=macOS_x64 ;;
+            esac
+            mkdir -p "package/$platform"
+            cp -r "$rid" "package/$platform/Gears3_Multipatch_Launcher"
+            cp packaging/INSTALL_TUTORIAL.txt changelog.txt languages.csv LICENSE "package/$platform/Gears3_Multipatch_Launcher/"
+            (cd "package/$platform" && zip -qr "../../Gears3_Multipatch_Launcher_${GITHUB_REF_NAME}_$platform.zip" .)
+          done
+          sha256sum Gears3_Multipatch_Launcher_*.zip > SHA256SUMS.txt
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes Gears3_Multipatch_Launcher_*.zip SHA256SUMS.txt
