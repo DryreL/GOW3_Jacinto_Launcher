@@ -1,0 +1,56 @@
+INSTALLATION
+
+Which game do I need?
+A clean Gears of War 3 Jacinto 1.1.1 folder and about 2 GB of free space on its drive. Nothing else has to be installed. It does not work on Jacinto 1.1.2, a different build with Horde and multiplayer.
+
+The launcher says my game cannot be patched. Why?
+Install only works on the original files. Extract the game again, or use Uninstall Multipatch if an older version is installed, then install again.
+
+Can I delete the folder I downloaded?
+Yes. After you press Continue, the launcher runs from the game folder and has a desktop shortcut.
+
+How do I remove everything?
+Press Uninstall Multipatch on Home. The game returns to clean Jacinto 1.1.1 and your saves stay.
+
+The game says D3DCOMPILER_43.dll is missing.
+Press Install DirectX components on Home and install the DirectX June 2010 runtime.
+
+PLAYING
+
+Which button should I use?
+Play Offline for the campaign alone or split-screen. Play on Steam for online co-op; Steam must be running.
+
+Keyboard or gamepad?
+Settings > Controls. It decides which buttons work in some menus and which button icons the game shows. Keyboard and mouse: ESC and Enter work there, and the gamepad's B button does not. Gamepad: the reverse.
+
+How do I change my name?
+Press the pencil next to Signed in as. The game uses up to 12 characters.
+
+How do I change the game language?
+Settings > General > Game language, then Apply settings. Community languages must be downloaded from Nexus Mods and installed first; the button next to the list opens the page. Choose the language afterwards and the launcher sets it up for you, including the subtitle font.
+
+Can I play in a borderless window?
+Yes, on Windows: turn on the Vulkan renderer (DXVK) in Settings > Display, then choose Display mode > Borderless window. It uses your screen's resolution. Keep the launcher open, so other windows can appear over the game.
+
+What is the Vulkan renderer (DXVK)?
+It runs the game's DirectX 9 graphics through Vulkan and can help on modern graphics cards. It adds one file beside the game and can be turned off at any time. The first minutes can stutter while shaders are prepared. If you see problems, turn it off.
+
+The game crashes during the final movie.
+This is a known issue with the HD Movies Pack: replace Tower_Outro.bik with the original file. The launcher warns you when a movie is over 4 GB.
+
+SUPPORT
+
+Where do I report a bug or find people to play with?
+Report bugs with the Bug Report button on the About page, and attach the log from Settings > Open Diagnostics. To find people to play with, join the Discord server.
+
+I want to help improve the game. What should I do?
+If you know game development and modding tools, and you have a mod that is finished or in progress, contact DryreL. If it is a good fit, it can become part of the launcher. For a community language, publish your translation on its own Nexus Mods page and tell DryreL: it will be listed on the Recommended page. Language packs must be on Nexus Mods to be listed.
+
+Can I translate the launcher?
+Yes. Edit languages.csv next to the launcher. Each row has a key, each column is one language.
+
+I want to donate. How can I?
+This software is completely free and open source, and nothing is unlocked by paying. If you still want to thank someone, click their name on the Credits page: it opens their Nexus Mods profile, where you can donate if that person accepts donations.
+
+Is this an official project?
+No. It is a volunteer, non-profit community project with no connection to Epic Games or The Coalition.

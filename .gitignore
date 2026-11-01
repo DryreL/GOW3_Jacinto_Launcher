@@ -164,3 +164,27 @@ $RECYCLE.BIN/
 .DS_Store
 
 _NCrunch*
+# Launcher build output
+dist/
+patch-data/
+keys.local.props
+
+
+# Multipatch sources: scripts and code are tracked. Game-derived files and the Steamworks SDK must not reach this public repository.
+/multipatch/tool/_sdk/
+/multipatch/tool/_dev/
+/multipatch/tool/FIXES 1.0/
+/multipatch/tool/GOW3_*/
+/multipatch/reference-package/
+/multipatch/**/GearGame_u_diff.txt
+/multipatch/**/*.gear
+/multipatch/**/*.upk
+/multipatch/**/*.u
+/multipatch/**/*.bik
+/multipatch/**/*.exe
+/multipatch/**/*.dll
+/multipatch/**/*.lib
+/multipatch/**/*.pdb
+/multipatch/**/*.before_*
+/multipatch/**/Backups/
+/graphify-out

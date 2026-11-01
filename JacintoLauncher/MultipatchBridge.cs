@@ -22,7 +22,7 @@ internal static class MultipatchBridge
     /// <summary>Set by the UI so the settings engine and game start see the user's Wine prefix and runner.</summary>
     internal static LauncherConfig? Config;
 
-    private static string StateRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GOW3JacintoLauncher");
+    private static string StateRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.Create), "GOW3JacintoLauncher");
     private static string SettingsTransactionRoot
     {
         get
@@ -54,6 +54,13 @@ internal static class MultipatchBridge
             LauncherDiagnostics.Error("Settings action " + action + " failed", exception);
             throw;
         }
+    }
+
+    /// <summary>Keeps the texture size caps matched to the installed HD Textures Pack phases. A failure must not stop the game: the caps left in place are the ones it last ran with.</summary>
+    internal static void ApplyHdCaps(string gameDir)
+    {
+        try { HdTextureCaps.Apply(gameDir, GameRunner.DocumentsRoot(Config), Engine(gameDir).CurrentTextureLod()); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or InvalidDataException) { LauncherDiagnostics.Error("HD texture caps were not updated", exception); }
     }
 
     internal static JsonObject LoadSettingsFromMultipatch(string gameDir) => Logged("GetGraphics", () => Engine(gameDir).GetGraphics());
@@ -99,6 +106,54 @@ internal static class MultipatchBridge
         catch (Exception exception) { throw new IOException("Save backup did not complete. Partial data, if any, was retained for inspection at: " + partial, exception); }
     }
 
+    internal sealed record SaveBackup(string Directory, DateTime CreatedUtc, int Files);
+
+    internal static SaveBackup[] ListSaveBackups(string? backupRoot = null)
+    {
+        var root = backupRoot is null ? Path.Combine(StateRoot, "save-backups") : Path.GetFullPath(backupRoot);
+        if (!Directory.Exists(root)) return Array.Empty<SaveBackup>();
+        var found = new List<SaveBackup>();
+        foreach (var directory in Directory.GetDirectories(root, "saves-*"))
+        {
+            try
+            {
+                var manifest = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "manifest.json")))!;
+                found.Add(new SaveBackup(directory, manifest["CreatedUtc"]!.GetValue<DateTime>(), manifest["Files"]!.AsArray().Count));
+            }
+            catch (Exception exception) when (exception is IOException or JsonException or NullReferenceException or InvalidOperationException) { LauncherDiagnostics.Info("Save backup skipped: " + directory + ": " + exception.Message); }
+        }
+        return found.OrderByDescending(b => b.CreatedUtc).ToArray();
+    }
+
+    /// <summary>Makes the saves match a backup. Nothing is touched until the backup verifies, and the current saves are backed up first.</summary>
+    internal static void RestoreSaves(string gameDir, string backupDirectory, string? backupRoot = null)
+    {
+        if (GameLayout.GameRunning()) throw new InvalidOperationException("Close the game before restoring saves.");
+        var checkpoints = Path.GetFullPath(Path.Combine(gameDir, "GearGame", "SaveData"));
+        var profile = Path.GetFullPath(Path.Combine(gameDir, "Binaries", "GearGame", "SaveData"));
+        var manifest = JsonNode.Parse(File.ReadAllText(Path.Combine(backupDirectory, "manifest.json")))!;
+        var plan = new List<(string Source, string Target)>();
+        foreach (var entry in manifest["Files"]!.AsArray())
+        {
+            var relative = entry!["RelativePath"]!.GetValue<string>().Replace('\\', Path.DirectorySeparatorChar);
+            var source = Path.GetFullPath(Path.Combine(backupDirectory, relative));
+            if (!source.StartsWith(Path.GetFullPath(backupDirectory) + Path.DirectorySeparatorChar, StringComparison.Ordinal)) throw new InvalidDataException("A backup path escaped its folder: " + relative);
+            if (!File.Exists(source) || !string.Equals(Hash(source), entry["SHA256"]!.GetValue<string>(), StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Save backup failed verification: " + relative);
+            var profilePrefix = "Profile" + Path.DirectorySeparatorChar;
+            plan.Add((source, relative.StartsWith(profilePrefix, StringComparison.Ordinal) ? Path.Combine(profile, relative[profilePrefix.Length..]) : Path.Combine(checkpoints, relative)));
+        }
+        if (Directory.Exists(checkpoints) || Directory.Exists(profile)) BackupAllSaves(gameDir, backupRoot);
+        var wanted = new HashSet<string>(plan.Select(p => p.Target), StringComparer.OrdinalIgnoreCase);
+        foreach (var folder in new[] { checkpoints, profile }.Where(Directory.Exists))
+            foreach (var file in Directory.GetFiles(folder, "*", SearchOption.AllDirectories))
+                if (!wanted.Contains(file)) File.Delete(file);
+        foreach (var (source, target) in plan)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(source, target, true);
+        }
+    }
+
     /// <summary>
     /// Read-only preflight for one mode of the single installation: game files,
     /// Multipatch start script/data and whether the network mode can be applied.
@@ -139,10 +194,15 @@ internal static class MultipatchBridge
         var layer = GameRunner.NeedsCompatibilityLayer ? GameRunner.FindLayer(config) : null;
         var start = GameRunner.BuildStart(gameDir, arguments, mode, config, layer);
         NetworkMode.Apply(gameDir, mode);
+        ApplyHdCaps(gameDir);
+        PlayerIdentity.Apply(gameDir, config.PlayerName, GameRunner.DocumentsRoot(config));
         if (backupSaves && (Directory.Exists(Path.Combine(gameDir, "GearGame", "SaveData")) || Directory.Exists(Path.Combine(gameDir, "Binaries", "GearGame", "SaveData"))))
             LauncherDiagnostics.Info("Pre-launch " + BackupAllSaves(gameDir));
         using var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("GearGame.exe did not start.");
         LauncherDiagnostics.Info($"GearGame.exe started in {mode} mode (pid {process.Id}, {layer?.Kind ?? "direct"}) with: {arguments}");
+        DiscordPresence.Start(process.Id);
+        var files = GameLayout.ToolFilesDir(gameDir);
+        if (files is not null && JsonNode.Parse(File.ReadAllText(Path.Combine(files, "graphics.json")))?["Borderless"]?.GetValue<bool>() == true) BorderlessWindow.Watch(process.Id);
     }
 
     private static string Hash(string path) { using var s = File.OpenRead(path); return Convert.ToHexString(SHA256.HashData(s)).ToLowerInvariant(); }

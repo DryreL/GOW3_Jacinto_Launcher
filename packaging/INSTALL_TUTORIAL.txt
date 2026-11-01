@@ -1,0 +1,50 @@
+GEARS OF WAR 3 JACINTO LAUNCHER - INSTALLATION TUTORIAL
+
+You need a clean Gears of War 3 Jacinto 1.1.1 game folder and about 2 GB of free space
+on the game's drive. No .NET, PowerShell or other installation is needed.
+
+INSTALL
+1. Unzip this package anywhere. It does not have to be in the game folder.
+2. Open GoW3Jacinto_Launcher (GoW3Jacinto_Launcher.exe on Windows).
+3. If the launcher does not find the game, press "Choose game folder" and select the
+   folder that contains Binaries, Engine and GearGame.
+4. Press "Install Multipatch" and wait. It usually takes less than a minute.
+   Every fix is listed as it is applied.
+5. Press "Continue". The launcher now runs from the game folder and has a desktop
+   shortcut, so you can delete the folder you unzipped.
+6. Press "Play Offline", or "Play on Steam" for online co-op. Steam must be running.
+
+Settings and Controls unlock after the installation.
+
+SETTINGS
+- Settings has the tabs General, Display, Graphics, Audio and Controls.
+- To translate the launcher, edit languages.csv next to the launcher.
+- Game language is in Settings > General. Community languages come from Nexus Mods.
+- Display mode has Fullscreen, Windowed and, on Windows, Borderless window, which uses the
+  Vulkan renderer (DXVK).
+- The Vulkan renderer (DXVK) is optional, in Settings > Display. It downloads one file.
+- To change your name, press the pencil next to "Signed in as".
+- Press Apply after changing game settings, then restart the game.
+
+PLATFORM NOTES
+- Windows: the first start can take a few seconds longer, while the graphics libraries
+  unpack to a temporary folder.
+- Linux and Steam Deck: you need Proton, umu-launcher or Wine to play. If the file does
+  not open, run: chmod +x GoW3Jacinto_Launcher
+- macOS: you need Wine, or another runner set in Settings. If the launcher is blocked,
+  run: xattr -dr com.apple.quarantine <this folder>
+
+HD TEXTURES PACK
+Version 1.3 or newer can be installed before or after the Multipatch, in any order.
+
+TROUBLESHOOTING
+- "Missing D3DCOMPILER_43.dll": use the "Install DirectX components" button on Home.
+- Files damaged: Settings > Verify game files, then Repair files.
+- Crash during the final movie with the HD Movies Pack: replace Tower_Outro.bik with the
+  original file. The launcher warns you when a movie is over 4 GB.
+- Other problems: the FAQ page, or Settings > Open Diagnostics for the launcher's log.
+
+UNINSTALL
+Uninstall Multipatch on Home. The game returns to clean Jacinto 1.1.1 and your saves
+stay. If the game already had the Gears3 Multi Patch Tool, only the launcher is added and
+removed.

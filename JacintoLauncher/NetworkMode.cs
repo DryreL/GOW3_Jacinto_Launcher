@@ -36,11 +36,23 @@ internal static class NetworkMode
     /// <summary>JacintoNet DLLs parked while Offline is active; never deleted.</summary>
     internal static string ParkingDir(string gameDir) => Path.Combine(gameDir, "JacintoLauncher", "State", "JacintoNet");
 
+    private sealed record UrlCount(string Path, long Length, DateTime Written, int Listen, int NoList);
+    private static UrlCount? lastCount;
+
+    // The launcher checks each time its window gets focus; GearGame.u is 34 MB and rarely changes.
+    private static (int Listen, int NoList) CountUrls(string script)
+    {
+        var info = new FileInfo(script);
+        if (lastCount is { } known && known.Path == script && info.Exists && known.Length == info.Length && known.Written == info.LastWriteTimeUtc) return (known.Listen, known.NoList);
+        var bytes = File.ReadAllBytes(script);
+        var counted = new UrlCount(script, bytes.Length, File.GetLastWriteTimeUtc(script), Count(bytes, ListenUrl), Count(bytes, NoListUrl));
+        lastCount = counted;
+        return (counted.Listen, counted.NoList);
+    }
+
     internal static State Read(string gameDir)
     {
-        var bytes = File.ReadAllBytes(ScriptPath(gameDir));
-        var listen = Count(bytes, ListenUrl);
-        var nolist = Count(bytes, NoListUrl);
+        var (listen, nolist) = CountUrls(ScriptPath(gameDir));
         if (listen + nolist != 1)
             throw new InvalidDataException($"The Campaign network setting was not found exactly once in GearGame.u (listen={listen}, nolist={nolist}). This GearGame.u is not a supported Multipatch build.");
         return new State(listen == 1, nolist == 1, JacintoNetFiles.Select(name => File.Exists(Path.Combine(BinariesDir(gameDir), name))).ToArray());
@@ -161,4 +173,14 @@ internal static class NetworkMode
     }
 
     private static string Hash(string path) => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+
+    /// <summary>Hash of GearGame.u as it is in Steam mode, so a repair check does not report Offline mode as damage.</summary>
+    internal static string HashAsSteam(string path)
+    {
+        var bytes = File.ReadAllBytes(path);
+        var index = IndexOf(bytes, NoListUrl);
+        if (index >= 0) Buffer.BlockCopy(ListenUrl, 0, bytes, index, ListenUrl.Length);
+        InputProfile.ToKeyboard(bytes);
+        return Convert.ToHexString(SHA256.HashData(bytes));
+    }
 }

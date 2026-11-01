@@ -1,0 +1,148 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="JacintoLauncher.MainWindow" Title="Gears of War 3: Jacinto - Launcher" Icon="/app.ico"
+        Width="1280" Height="800" MinWidth="960" MinHeight="600" WindowStartupLocation="CenterScreen">
+  <Panel>
+  <Grid ColumnDefinitions="Auto,*">
+    <!-- Sidebar: everything stays on one window, which also suits Steam Deck gaming mode. -->
+    <Border x:Name="Sidebar" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0">
+      <Grid RowDefinitions="*,Auto">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
+          <Button x:Name="CollapseButton" Classes="collapse" AutomationProperties.Name="Collapse menu" ToolTip.Tip="Collapse menu" Click="Collapse_Click"><PathIcon Width="10" Height="10" Data="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></Button>
+          <DockPanel Margin="0,0,0,20" Background="Transparent" Cursor="Hand" ToolTip.Tip="About" Tapped="Logo_Tapped">
+            <Image Classes="logo" Source="/assets/icon256.png" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+            <StackPanel Classes="full" VerticalAlignment="Center"><TextBlock Text="GEARS OF WAR 3" FontWeight="Bold" FontSize="15"/><StackPanel Orientation="Horizontal" Spacing="9" Margin="0,3,0,0"><TextBlock Text="JACINTO" Foreground="{DynamicResource AccentTextBrush}" FontWeight="Bold" FontSize="15" LetterSpacing="4" VerticalAlignment="Center"/><Button x:Name="VersionButton" Classes="badge" AutomationProperties.Name="Version" ToolTip.Tip="Changelog" VerticalAlignment="Center" Click="Version_Click"><TextBlock x:Name="VersionText"/></Button></StackPanel></StackPanel>
+          </DockPanel>
+          <TextBlock Text="SIGNED IN AS" Classes="muted full" FontSize="11"/>
+          <DockPanel Classes="full" Margin="0,3,0,18">
+            <Button x:Name="EditNameButton" DockPanel.Dock="Right" AutomationProperties.Name="Edit player name" MinHeight="26" Width="30" Height="26" Padding="0" Margin="8,0,0,0" Click="EditName_Click"><PathIcon Width="13" Height="13" Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></Button>
+            <TextBlock x:Name="PlayerNameText" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+          </DockPanel>
+          <Button x:Name="PlayOfflineButton" ToolTip.ShowOnDisabled="True" Classes="primary play" AutomationProperties.Name="Play Offline" Click="PlayOffline_Click"><StackPanel Orientation="Horizontal" Spacing="10"><PathIcon Width="14" Height="14" Data="M6 3l15 9-15 9z"/><TextBlock Text="Play Offline" VerticalAlignment="Center"/></StackPanel></Button>
+          <Button x:Name="PlaySteamButton" ToolTip.ShowOnDisabled="True" Classes="primary play" AutomationProperties.Name="Play on Steam" Click="PlaySteam_Click"><StackPanel Orientation="Horizontal" Spacing="10"><PathIcon Width="17" Height="17" Data="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z"/><TextBlock Text="Play on Steam" VerticalAlignment="Center"/></StackPanel></Button>
+          <TextBlock Text="MENU" Classes="muted full" FontSize="11" Margin="0,8,0,6"/>
+          <ToggleButton x:Name="HomeNav" Classes="nav" AutomationProperties.Name="Home" Click="Nav_Click"><StackPanel Orientation="Horizontal" Spacing="11"><PathIcon Width="15" Height="15" Data="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/><TextBlock Text="Home" VerticalAlignment="Center"/></StackPanel></ToggleButton>
+          <ToggleButton x:Name="FeaturesNav" Classes="nav" AutomationProperties.Name="Features" Click="Nav_Click"><StackPanel Orientation="Horizontal" Spacing="11"><PathIcon Width="15" Height="15" Data="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/><TextBlock Text="Features" VerticalAlignment="Center"/></StackPanel></ToggleButton>
+          <ToggleButton x:Name="RecommendedNav" Classes="nav" AutomationProperties.Name="Recommended" Click="Nav_Click"><StackPanel Orientation="Horizontal" Spacing="11"><PathIcon Width="15" Height="15" Data="M20.5 11H19V7a2 2 0 0 0-2-2h-4V3.5a2.5 2.5 0 0 0-5 0V5H4a2 2 0 0 0-2 2v3.8h1.5a2.7 2.7 0 0 1 0 5.4H2V20a2 2 0 0 0 2 2h3.8v-1.5a2.7 2.7 0 0 1 5.4 0V22H17a2 2 0 0 0 2-2v-4h1.5a2.5 2.5 0 0 0 0-5z"/><TextBlock Text="Recommended" VerticalAlignment="Center"/></StackPanel></ToggleButton>
+          <ToggleButton x:Name="CheatsNav" Classes="nav" AutomationProperties.Name="Cheats" Click="Nav_Click"><StackPanel Orientation="Horizontal" Spacing="11"><PathIcon Width="15" Height="15" Data="M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/><TextBlock Text="Cheats" VerticalAlignment="Center"/></StackPanel></ToggleButton>
+          <ToggleButton x:Name="AboutNav" Classes="nav" AutomationProperties.Name="About" Click="Nav_Click"><StackPanel Orientation="Horizontal" Spacing="11"><PathIcon Width="15" Height="15" Data="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/><TextBlock Text="About" VerticalAlignment="Center"/></StackPanel></ToggleButton>
+          <ToggleButton x:Name="FaqNav" Classes="nav" AutomationProperties.Name="FAQ" Click="Nav_Click"><StackPanel Orientation="Horizontal" Spacing="11"><PathIcon Width="15" Height="15" Data="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 17h-2v-2h2v2zm2.07-7.75-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26A2 2 0 1 0 10 9H8a4 4 0 1 1 7.07 2.25z"/><TextBlock Text="FAQ" VerticalAlignment="Center"/></StackPanel></ToggleButton>
+          <ToggleButton x:Name="CreditsNav" Classes="nav" AutomationProperties.Name="Credits" Click="Nav_Click"><StackPanel Orientation="Horizontal" Spacing="11"><PathIcon Width="15" Height="15" Data="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05A4.2 4.2 0 0 1 17 16.5V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/><TextBlock Text="Credits" VerticalAlignment="Center"/></StackPanel></ToggleButton>
+          <ToggleButton x:Name="SettingsNav" ToolTip.ShowOnDisabled="True" Classes="nav" AutomationProperties.Name="Settings" IsEnabled="False" Click="Nav_Click"><StackPanel Orientation="Horizontal" Spacing="11"><PathIcon Width="15" Height="15" Data="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.61l-1.92-3.32a.5.5 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.48-.41h-3.84a.5.5 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.5.5 0 0 0-.59.22L2.74 8.87a.5.5 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.5.5 0 0 0-.12-.61l-2.01-1.58zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/><TextBlock Text="Settings" VerticalAlignment="Center"/></StackPanel></ToggleButton>
+          <ToggleButton x:Name="ChangelogNav" Classes="nav" IsVisible="False"/>
+        </StackPanel></ScrollViewer>
+        <Panel Grid.Row="1" Classes="full"><TextBlock x:Name="OnlineText" Classes="muted" VerticalAlignment="Center" Margin="0,6,0,0" IsVisible="False"/></Panel>
+      </Grid>
+    </Border>
+    <Panel x:Name="ContentArea" Grid.Column="1">
+      <!-- Home: the banner fades into the page; the scrim keeps the status text readable. -->
+      <Panel x:Name="HomePage" Background="{DynamicResource InkBrush}">
+        <Grid x:Name="HomeArtPanel" RowDefinitions="*,*" ClipToBounds="True">
+          <Image x:Name="HomeArt" Grid.RowSpan="2" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+          <Border Grid.Row="1" Background="{DynamicResource HomeFadeBrush}"/>
+        </Grid>
+        <Border VerticalAlignment="Bottom" Padding="32,56,32,26" Background="{DynamicResource HomeScrimBrush}">
+          <StackPanel>
+            <TextBlock x:Name="StatusText" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            <DockPanel x:Name="ReadyRow" Margin="0,8,0,0">
+              <Button x:Name="UninstallButton" DockPanel.Dock="Right" Classes="warn" Content="Uninstall Multipatch" IsVisible="False" Click="Uninstall_Click"/>
+              <StackPanel Orientation="Horizontal" Spacing="22" VerticalAlignment="Center"><TextBlock x:Name="OfflineReadyText" FontSize="13"/><TextBlock x:Name="SteamReadyText" FontSize="13"/></StackPanel>
+            </DockPanel>
+            <TextBlock x:Name="PathText" Classes="muted" Margin="0,6,0,0"/>
+            <TextBlock x:Name="WarningText" Classes="status" Margin="0,6,0,0" IsVisible="False"/>
+            <Button x:Name="DirectXButton" Content="Install DirectX components" Margin="0,8,0,0" IsVisible="False" Click="DirectX_Click"/>
+            <Border x:Name="NewsCard" Classes="card" Margin="0,14,0,0" Padding="12" IsVisible="False">
+              <StackPanel><TextBlock x:Name="NewsTitle" FontWeight="SemiBold"/><TextBlock x:Name="NewsText" Classes="muted" TextWrapping="Wrap" MaxLines="5" Margin="0,4,0,0"/><Button x:Name="UpdateButton" Content="Update now" Classes="primary" HorizontalAlignment="Left" Margin="0,10,0,0" IsVisible="False" Click="Update_Click"/></StackPanel>
+            </Border>
+            <WrapPanel x:Name="SetupPanel" Margin="0,12,0,0" IsVisible="False">
+              <Button x:Name="InstallButton" Content="Install Multipatch" Classes="primary" Margin="0,0,10,0" Click="Install_Click"/>
+              <Button x:Name="ContinueButton" Content="Continue" Classes="primary" Margin="0,0,10,0" IsVisible="False" Click="Continue_Click"/>
+              <Button x:Name="ChooseFolderButton" Content="Choose game folder" Margin="0,0,10,0" Click="Browse_Click"/>
+            </WrapPanel>
+            <!-- The old installer's questions. All of them can be changed later in Settings. -->
+            <Border x:Name="InputChoicePanel" Classes="card" Margin="0,12,0,0" Padding="16,12" IsVisible="False">
+              <StackPanel>
+                <Grid Classes="row" ColumnDefinitions="200,*"><TextBlock Text="I play with" Classes="label"/><ComboBox x:Name="InputChoiceBox" Grid.Column="1" AutomationProperties.Name="I play with" SelectedIndex="0"><ComboBoxItem Content="Keyboard and mouse"/><ComboBoxItem Content="Gamepad"/></ComboBox></Grid>
+                <Grid Classes="row" ColumnDefinitions="200,*"><TextBlock Text="Subtitle size" Classes="label"/><ComboBox x:Name="SubtitleChoiceBox" Grid.Column="1" AutomationProperties.Name="Subtitle size" SelectedIndex="0"><ComboBoxItem Content="Big (recommended for PC)"/><ComboBoxItem Content="Normal (handhelds)"/><ComboBoxItem Content="Original game font"/></ComboBox></Grid>
+                <CheckBox x:Name="HudChoiceCheck" Content="HUD scaling (recommended)" IsChecked="True" ToolTip.Tip="The HUD is drawn in fixed pixels for 720p. With scaling on, it keeps its size relative to the screen; off, it gets smaller as the resolution goes up."/>
+                <TextBlock Text="You can change all of these later in Settings." Classes="muted" Margin="0,4,0,0"/>
+              </StackPanel>
+            </Border>
+            <ScrollViewer x:Name="InstallLogScroll" MaxHeight="240" Margin="0,10,0,0" IsVisible="False"><SelectableTextBlock x:Name="InstallLog" FontSize="12" LineHeight="18" TextWrapping="Wrap"/></ScrollViewer>
+            <Border x:Name="TelemetryNotice" Classes="card" Margin="0,14,0,0" Padding="12" IsVisible="False">
+              <DockPanel><Button Content="OK" DockPanel.Dock="Right" Margin="12,0,0,0" Click="TelemetryNotice_Click"/><TextBlock Classes="muted" VerticalAlignment="Center" Text="Anonymous launcher and game crash reports and usage statistics are on, to help fix bugs. No names or file paths are sent. Turn them off in Settings."/></DockPanel>
+            </Border>
+          </StackPanel>
+        </Border>
+      </Panel>
+      <ContentControl x:Name="PageHost" IsVisible="False"/>
+    </Panel>
+  </Grid>
+  <!-- In the window rather than a dialog: dialogs are awkward with a gamepad and in Steam gaming mode. -->
+  <Border x:Name="GuideOverlay" Classes="overlay" Background="#D8000000" IsVisible="False">
+    <Border Classes="card" BorderBrush="{DynamicResource AccentBrush}" Width="540" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24">
+      <StackPanel>
+        <TextBlock Text="HOW TO INSTALL" Classes="h2"/>
+        <TextBlock Text="1. Choose your Gears of War 3 Jacinto v1.1.1 folder, if the launcher asks for it." TextWrapping="Wrap" Margin="0,0,0,8"/>
+        <TextBlock Text="2. Press Install Multipatch on Home and wait until it finishes." TextWrapping="Wrap" Margin="0,0,0,8"/>
+        <TextBlock Text="3. Press Continue, then Play Offline or Play on Steam." TextWrapping="Wrap" Margin="0,0,0,8"/>
+        <CheckBox x:Name="GuideHideCheck" Content="Don't show this again" IsChecked="True" Margin="0,8,0,12"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button x:Name="GuideOk" Content="OK" Classes="primary" Click="GuideOk_Click"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </Border>
+  <Border x:Name="NameOverlay" Classes="overlay" Background="#D8000000" IsVisible="False">
+    <Border Classes="card" BorderBrush="{DynamicResource AccentBrush}" Width="440" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24">
+      <StackPanel>
+        <TextBlock Text="PLAYER NAME" Classes="h2"/>
+        <TextBox x:Name="NameBox" MaxLength="12" KeyDown="NameBox_KeyDown"/>
+        <TextBlock Text="Shown in the game, up to 12 characters. Your Steam name does not change." Classes="muted" Margin="0,8,0,16"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+          <Button Content="Cancel" Click="NameCancel_Click"/>
+          <Button Content="Save" Classes="primary" Click="NameSave_Click"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </Border>
+  <Border x:Name="WrongBuildOverlay" Classes="overlay" Background="#D8000000" IsVisible="False">
+    <Border Classes="card" BorderBrush="{DynamicResource AccentBrush}" Width="540" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24">
+      <StackPanel>
+        <TextBlock Text="WRONG GAME VERSION" Classes="h2"/>
+        <TextBlock Text="This looks like Project Jacinto v1.1.2. The Multipatch must be installed on v1.1.1: v1.1.1 is the campaign build, while v1.1.2 is a different build with Horde and multiplayer. Choose a v1.1.1 folder." TextWrapping="Wrap" Margin="0,0,0,16"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+          <Button x:Name="WrongBuildOk" Content="OK" Classes="primary" Click="WrongBuild_Click"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </Border>
+  <Border x:Name="UpdateOverlay" Classes="overlay" Background="#D8000000" IsVisible="False">
+    <Border Classes="card" BorderBrush="{DynamicResource AccentBrush}" Width="540" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24">
+      <StackPanel>
+        <TextBlock Text="UPDATE AVAILABLE" Classes="h2"/>
+        <TextBlock x:Name="UpdatePromptText" TextWrapping="Wrap" Margin="0,0,0,10"/>
+        <TextBlock Text="The game must be closed for the update. Save first by reaching a checkpoint, so you do not lose your progress." TextWrapping="Wrap" Margin="0,0,0,8"/>
+        <TextBlock x:Name="UpdateGameRunningText" Text="The game is still running. Close it, then press Yes again." Foreground="OrangeRed" TextWrapping="Wrap" IsVisible="False" Margin="0,0,0,8"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,6,0,0">
+          <Button Content="No" Click="UpdateNo_Click"/>
+          <Button x:Name="UpdateYesButton" Content="Yes" Classes="primary" Click="UpdateYes_Click"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </Border>
+  <Border x:Name="MovieOverlay" Classes="overlay" Background="#D8000000" IsVisible="False">
+    <Border Classes="card" BorderBrush="{DynamicResource AccentBrush}" Width="540" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24">
+      <StackPanel>
+        <TextBlock Text="HD MOVIES PACK DETECTED" Classes="h2"/>
+        <TextBlock x:Name="MovieWarningText" TextWrapping="Wrap"/>
+        <Button Content="Open HD Movies Pack page" Classes="link" HorizontalAlignment="Left" Margin="0,10,0,0" Click="MoviePage_Click"/>
+        <CheckBox x:Name="MovieHideCheck" Content="Don't show this warning again" Margin="0,8,0,12"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+          <Button Content="Cancel" Click="MovieCancel_Click"/>
+          <Button x:Name="MoviePlayButton" Content="Play anyway" Classes="primary" Click="MoviePlay_Click"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </Border>
+  </Panel>
+</Window>

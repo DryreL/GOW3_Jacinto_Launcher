@@ -39,7 +39,8 @@ internal sealed class SettingsEngine
         keybindsPath = Path.Combine(filesDir, "keybinds.json");
         binariesDir = Path.Combine(root, "Binaries", "Win64");
         docsConfig = Path.Combine(Path.GetFullPath(documentsRoot), "My Games", "Gears of War 3", "GearGame", "Config");
-        audioExecPath = Path.Combine(binariesDir, "Gears3_Audio.txt");
+        // -exec= reads from ..\..\Binaries, not from the folder the game runs in.
+        audioExecPath = Path.Combine(root, "Binaries", "Gears3_Audio.txt");
         Directory.CreateDirectory(txRoot);
         RecoverIncompleteTransactions();
     }
@@ -155,13 +156,36 @@ internal sealed class SettingsEngine
         if (s["Disabled"] is not JsonArray) throw new ArgumentException("Disabled must be a JSON array.");
         foreach (var effect in Disabled(s)) if (!Effects.ContainsKey(effect)) throw new ArgumentException("Unsupported disabled effect: " + effect);
         if (!IsInt(s, "AudioChannels") || !new[] { 32, 64, 128 }.Contains(Num(s, "AudioChannels"))) throw new ArgumentException("AudioChannels must be 32, 64 or 128.");
+        foreach (var name in new[] { "MusicVolume", "EffectsVolume", "DialogueVolume" }) if (!IsInt(s, name) || Num(s, name) is < 0 or > 100) throw new ArgumentException(name + " must be an integer from 0 to 100.");
+        if (!new[] { "big", "normal", "default" }.Contains(Str(s, "SubtitleSize"), StringComparer.OrdinalIgnoreCase)) throw new ArgumentException("SubtitleSize must be big, normal or default.");
     }
 
     // Audio / camera options of the Multi Patch Tool Game Settings; defaults are the tool's.
     private static JsonObject AddAudioDefaults(JsonObject s)
     {
         s["AudioFilter"] ??= true; s["AudioChannels"] ??= 32; s["DisableRunShake"] ??= true;
+        s["MusicVolume"] ??= 100; s["EffectsVolume"] ??= 100; s["DialogueVolume"] ??= 100;
+        s["SubtitleSize"] ??= "big"; s["HordeBeast"] ??= false;
         return s;
+    }
+
+    // Each sound class with its stock volume (SoundClassesAndModes.upk, from the game's ListSoundClassVolumes). A command sets one class only, so all of a group are listed.
+    private static readonly (string Setting, (string Class, double Stock)[] Classes)[] VolumeGroups =
+    {
+        ("MusicVolume", new[] { ("GameMusic", 1.05), ("Music", 1.0), ("OptionMusic", 1.0), ("Stinger", .97), ("UserMusic", 1.0) }),
+        ("DialogueVolume", new[] { ("Dialog", 1.0), ("DialogDeafening", 1.1), ("DialogDeafeningSloMo", 1.1), ("DialogLoud", 1.1), ("DialogMedium", 1.1), ("DialogNoDSP", 1.1), ("DialogNoRadio", 1.1), ("DialogSoft", 1.0), ("Chatter", 1.0), ("ChatterEnemy", 1.1), ("ChatterEnemytell", 1.1), ("ChatterFriend", 1.1), ("ChatterMPEndofRound", 1.0), ("MovieVoice", 1.0), ("OptionVoice", 1.0), ("Voice", 1.0) }),
+        ("EffectsVolume", new[] { ("Ambient", .9), ("Character", .93), ("CharacterTell", 1.0), ("Cinematic", 1.0), ("EventDeafening", 1.0), ("EventLoud", 1.0), ("EventMedium", 1.0), ("Item", 1.0), ("MovieEffects", 1.0), ("OptionSFX", 1.0), ("SFX", 1.0), ("SoundModeExceptions", 1.0), ("UI", .94), ("Vehicle", .93), ("Weapon", 1.0), ("WeaponBulletEffects", .92), ("WeaponPlayer", .94), ("WeaponShared", .92), ("WeaponTell", .95), ("WeaponTellSuper", 1.0) })
+    };
+
+    /// <summary>Console commands the engine runs once at startup through -exec=. Empty when everything is at its stock value.</summary>
+    private static string AudioCommands(JsonObject s)
+    {
+        var commands = new StringBuilder();
+        if (!On(s, "AudioFilter")) commands.Append("DisableLPF\r\n");
+        foreach (var (setting, classes) in VolumeGroups)
+            if (Num(s, setting) != 100)
+                foreach (var (name, stock) in classes) commands.Append(CultureInfo.InvariantCulture, $"ModifySoundClass {name} Vol={stock * Num(s, setting) / 100:0.###}\r\n");
+        return commands.ToString();
     }
 
     private static readonly Dictionary<string, string[]> Effects = new(StringComparer.OrdinalIgnoreCase)
@@ -180,6 +204,7 @@ internal sealed class SettingsEngine
     {
         "low" => new[] { "32", "512", "512", "-1", "False" }, "medium" => new[] { "64", "1024", "1024", "0", "True" }, "ultra" => new[] { "128", "2048", "2048", "1", "True" }, _ => new[] { "64", "1120", "1344", "0", "True" }
     };
+    internal string? CurrentTextureLod() => File.Exists(graphicsPath) ? TextureLod(AddAudioDefaults(ReadJsonObject(graphicsPath))) : null;
     private static string TextureLod(JsonObject s) => Str(s, "TextureQuality").ToLowerInvariant() switch { "low" => "2", "medium" => "1", _ => "0" };
     private static (string Key, string Hdd, string Ssd)[] StreamingRows => new[]
     {
@@ -194,17 +219,19 @@ internal sealed class SettingsEngine
     private string[] CameraFiles() => Existing(Path.Combine(configDir, "GearCamera.ini"), Path.Combine(configDir, "DefaultCamera.ini"), Path.Combine(docsConfig, "GearCamera.ini"));
     private string[] LaunchFiles() => Existing(Path.Combine(root, "Gears3_Start_Game.bat"), Path.Combine(binariesDir, "StartCampaign.bat"), Path.Combine(root, "Gears3_Start_Game_Debug.bat"), Path.Combine(root, "Gears3_Start_Game.sh"), Path.Combine(root, "Gears3_Start_Game_Debug.sh"));
     private string[] ControlFiles() => Existing(Path.Combine(docsConfig, "GearInput.ini"), Path.Combine(configDir, "GearInput.ini"), Path.Combine(configDir, "DefaultInput.ini"));
+    private string[] MenuFiles() => Existing(Path.Combine(configDir, "DefaultUI.ini"), Path.Combine(configDir, "GearUI.ini"), Path.Combine(docsConfig, "GearUI.ini"));
+    private string[] FontFiles() => new[] { SubtitleFonts.NormalFile, SubtitleFonts.BigFile }.Select(n => Path.Combine(root, "GearGame", "Content", "Interface", n)).ToArray();
 
     private string[] AllowedTargets(string kind) => kind == "Graphics"
-        ? new[] { graphicsPath }.Concat(EngineFiles()).Concat(CameraFiles()).Concat(LaunchFiles()).Concat(PawnFiles()).Append(audioExecPath).ToArray()
+        ? new[] { graphicsPath }.Concat(EngineFiles()).Concat(CameraFiles()).Concat(LaunchFiles()).Concat(PawnFiles()).Concat(MenuFiles()).Concat(FontFiles()).Append(audioExecPath).ToArray()
         : new[] { graphicsPath, keybindsPath }.Concat(ControlFiles()).ToArray();
 
-    private void AssertPreflight(string kind)
+    private void AssertPreflight(string kind, bool writing = true)
     {
         if (!File.Exists(Path.Combine(binariesDir, "GearGame.exe"))) throw new FileNotFoundException("Game executable is missing from the selected directory.");
         if (GameLayout.StartScript(root) is null) throw new FileNotFoundException("Multipatch start script is missing.");
         if (!File.Exists(graphicsPath)) throw new FileNotFoundException("Multipatch graphics.json is missing.");
-        if (GameLayout.GameRunning()) throw new InvalidOperationException("Close GearGame before applying settings.");
+        if (writing && GameLayout.GameRunning()) throw new InvalidOperationException("Close GearGame before applying settings.");
         var journalPath = Path.Combine(filesDir, "installation-state.json");
         if (File.Exists(journalPath))
         {
@@ -342,7 +369,7 @@ internal sealed class SettingsEngine
     // ---------------------------------------------------------------- graphics
     internal JsonObject GetGraphics()
     {
-        AssertPreflight("Graphics");
+        AssertPreflight("Graphics", false);
         var graphics = AddAudioDefaults(ReadJsonObject(graphicsPath));
         Validate(graphics);
         return new JsonObject { ["Success"] = true, ["Graphics"] = graphics.DeepClone(), ["Applied"] = EffectiveState(graphics) };
@@ -355,10 +382,27 @@ internal sealed class SettingsEngine
         var settings = AddAudioDefaults(merged);
         Validate(settings);
         AssertPreflight("Graphics");
-        var engineFiles = EngineFiles(); var cameraFiles = CameraFiles(); var launchFiles = LaunchFiles(); var pawnFiles = PawnFiles();
-        var targets = new[] { graphicsPath }.Concat(engineFiles).Concat(cameraFiles).Concat(launchFiles).Concat(pawnFiles).Append(audioExecPath);
+        var engineFiles = EngineFiles(); var cameraFiles = CameraFiles(); var launchFiles = LaunchFiles(); var pawnFiles = PawnFiles(); var menuFiles = MenuFiles();
+        // Only a full installation has the fonts; a folder patched by the old tool keeps what the tool chose.
+        var managed = MultipatchInstaller.Managed(root);
+        var (normalFont, largeFont) = SubtitleFonts.Sources(Language(settings), Str(settings, "SubtitleSize").ToLowerInvariant(), On(settings, "ForceWarfareFonts"));
+        var fontWrites = managed ? MultipatchInstaller.FontWrites(root, normalFont, largeFont) : Array.Empty<(string Target, string Source)>();
+        var targets = new[] { graphicsPath }.Concat(engineFiles).Concat(cameraFiles).Concat(launchFiles).Concat(pawnFiles).Concat(menuFiles).Concat(fontWrites.Select(w => w.Target)).Append(audioExecPath);
         var tx = Transact("Graphics", targets, () =>
         {
+            MultipatchInstaller.WriteFonts(root, fontWrites);
+            var fontName = managed ? SubtitleFonts.FontName(Language(settings), Str(settings, "SubtitleSize").ToLowerInvariant(), On(settings, "ForceWarfareFonts")) : null;
+            foreach (var path in engineFiles.Where(p => fontName is not null && !Same(Path.GetFileName(p), "BaseEngine.ini")))
+            {
+                var text = File.ReadAllText(path);
+                WriteIfChanged(path, text, ReplaceLine(text, @"(?m)^SubtitleFontName=[^\r\n]*", "SubtitleFontName=" + fontName));
+            }
+            // The build ships Horde and Beast switched off in the main menu.
+            foreach (var path in menuFiles)
+            {
+                var text = File.ReadAllText(path);
+                WriteIfChanged(path, text, Regex.Replace(text, @"(\(Label=""(?:Horde|Siege)"",ImagePath=""[^""]*"",Next=MAINMENUOP_(?:Horde|Siege),bIsDisabled=)(?:true|false)\)", m => m.Groups[1].Value + (On(settings, "HordeBeast") ? "false" : "true") + ")"));
+            }
             var (rx, ry) = Resolution(settings);
             var aspect = (double)rx / ry;
             var fov = Num(settings, "Fov") >= 50 ? Num(settings, "Fov") : aspect >= 2.0 ? 65 : 80;
@@ -371,9 +415,12 @@ internal sealed class SettingsEngine
                     if (Regex.IsMatch(updated, @"(?m)^\[" + Regex.Escape(section) + @"\]\r?$", RegexOptions.IgnoreCase)) updated = SetIniValue(updated, section, "RoadieRunShakyCamDampeningFactor", On(settings, "DisableRunShake") ? "0.0f" : stock);
                 WriteIfChanged(path, text, updated);
             }
-            // Audio filter off: the engine runs Binaries\Win64\Gears3_Audio.txt once at startup (-exec=); DisableLPF removes the muffled low-pass filter.
-            if (!On(settings, "AudioFilter")) WriteAtomic(audioExecPath, Encoding.ASCII.GetBytes("DisableLPF\r\n"));
+            // DisableLPF removes the muffled low-pass filter; the volumes are per sound class. Earlier versions put this file where the engine never looked.
+            var audioCommands = AudioCommands(settings);
+            if (audioCommands.Length != 0) WriteAtomic(audioExecPath, Encoding.ASCII.GetBytes(audioCommands));
             else if (File.Exists(audioExecPath)) File.Delete(audioExecPath);
+            var misplaced = Path.Combine(binariesDir, "Gears3_Audio.txt");
+            if (File.Exists(misplaced)) File.Delete(misplaced);
             var iconScale = aspect > 2.0 ? "0.68f" : aspect > 1.8 ? "0.85f" : "1.00f";
             var fovText = fov.ToString(CultureInfo.InvariantCulture);
             foreach (var path in cameraFiles)
@@ -383,7 +430,7 @@ internal sealed class SettingsEngine
                 updated = On(settings, "FovAllModes") ? ReplaceLine(updated, @"(?m)^FOVAngle=[^\r\n]*", "FOVAngle=" + fovText) : SetIniValue(updated, "GearGame.GameplayCam_Default", "FOVAngle", fovText);
                 WriteIfChanged(path, text, ReplaceLine(updated, @"(?m)^WeaponIconScale=[^\r\n]*", "WeaponIconScale=" + iconScale));
             }
-            var startArgs = $"{(On(settings, "Fullscreen") ? "-FULLSCREEN" : "-WINDOWED")} {(On(settings, "VSync") ? "-VSYNC" : "-NOVSYNC")} -ResX={rx} -ResY={ry} -language={Language(settings)}{(On(settings, "AudioFilter") ? "" : " -exec=Gears3_Audio.txt")}";
+            var startArgs = $"{(On(settings, "Fullscreen") ? "-FULLSCREEN" : "-WINDOWED")} {(On(settings, "VSync") ? "-VSYNC" : "-NOVSYNC")} -ResX={rx} -ResY={ry} -language={Language(settings)}{(audioCommands.Length == 0 ? "" : " -exec=Gears3_Audio.txt")}";
             foreach (var path in launchFiles)
             {
                 var text = File.ReadAllText(path);
@@ -415,6 +462,8 @@ internal sealed class SettingsEngine
         updated = ReplaceLine(updated, @"(?m)^AspectRatioAxisConstraint=[^\r\n]*", "AspectRatioAxisConstraint=" + (aspect >= 2.0 ? "AspectRatio_MaintainYFOV" : "AspectRatio_MaintainXFOV"));
         updated = ReplaceLine(updated, @"(?m)^Fullscreen=[^\r\n]*", "Fullscreen=" + Bool(On(s, "Fullscreen")));
         updated = ReplaceLine(updated, @"(?m)^UseVsync=[^\r\n]*", "UseVsync=" + Bool(On(s, "VSync")));
+        updated = Regex.Replace(updated, @"(?m)^Language=[a-zA-Z]{3}(?=\r?$)", "Language=" + Language(s));
+        updated = Regex.Replace(updated, @"(?m)^LanguageExt=[^\r\n]*", "LanguageExt=" + Language(s));
         string Set(string section, string key, string value) => updated = SetIniValue(updated, section, key, value);
         Set("SystemSettings", "OneFrameThreadLag", "True");
         var refresh = Num(s, "RefreshRate").ToString(CultureInfo.InvariantCulture);
@@ -484,8 +533,9 @@ internal sealed class SettingsEngine
                 if (actual is null) { if (isPrimary) { allMatch = false; fileMatch = false; } }
                 else if (!Same(actual, expected)) { allMatch = false; fileMatch = false; }
             }
-            foreach (var (key, whenHdd, whenSsd) in StreamingRows) if (!Same(GetIniValue(text, "TextureStreaming", key), hdd ? whenHdd : whenSsd)) allMatch = false;
-            foreach (var (effect, keys) in Effects) foreach (var key in keys) if (!Same(GetIniValue(text, "SystemSettings", key), Bool(!disabled.Contains(effect, StringComparer.OrdinalIgnoreCase)))) allMatch = false;
+            // A secondary file may simply not have these keys until the first Apply.
+            foreach (var (key, whenHdd, whenSsd) in StreamingRows) if (GetIniValue(text, "TextureStreaming", key) is var value && (value is not null || isPrimary) && !Same(value, hdd ? whenHdd : whenSsd)) allMatch = false;
+            foreach (var (effect, keys) in Effects) foreach (var key in keys) if (GetIniValue(text, "SystemSettings", key) is var value && (value is not null || disabled.Contains(effect, StringComparer.OrdinalIgnoreCase)) && !Same(value, Bool(!disabled.Contains(effect, StringComparer.OrdinalIgnoreCase)))) allMatch = false;
             var textureRows = Regex.Matches(text, @"(?m)^TEXTUREGROUP_(?:World|WorldNormalMap|Character|CharacterNormalMap|Weapon|WeaponNormalMap|Vehicle|VehicleNormalMap)=\([^\r\n]*LODBias=-?\d+[^\r\n]*\)");
             foreach (Match row in textureRows) if (Regex.Match(row.Value, @"LODBias=(-?\d+)").Groups[1].Value != lod) { allMatch = false; fileMatch = false; }
             if (isPrimary && textureRows.Count == 0) { allMatch = false; fileMatch = false; }
@@ -501,12 +551,13 @@ internal sealed class SettingsEngine
             if (!ok && SamePath(path, primaryCamera)) allMatch = false;
             states.Add(new JsonObject { ["File"] = path, ["ExpectedFov"] = fov, ["Matches"] = ok });
         }
-        var filterOff = !On(s, "AudioFilter");
+        var audioCommands = AudioCommands(s);
+        var usesExec = audioCommands.Length != 0;
         foreach (var path in LaunchFiles())
         {
             var text = File.ReadAllText(path);
             var ok = text.Contains($"-ResX={rx} -ResY={ry}", StringComparison.Ordinal) && text.Contains(On(s, "Fullscreen") ? "-FULLSCREEN" : "-WINDOWED", StringComparison.Ordinal)
-                && text.Contains(On(s, "VSync") ? "-VSYNC" : "-NOVSYNC", StringComparison.Ordinal) && text.Contains("-exec=Gears3_Audio.txt", StringComparison.Ordinal) == filterOff;
+                && text.Contains(On(s, "VSync") ? "-VSYNC" : "-NOVSYNC", StringComparison.Ordinal) && text.Contains("-exec=Gears3_Audio.txt", StringComparison.Ordinal) == usesExec;
             if (!ok) allMatch = false;
             states.Add(new JsonObject { ["File"] = path, ["LaunchArgumentsMatch"] = ok });
         }
@@ -517,7 +568,7 @@ internal sealed class SettingsEngine
             var text = File.ReadAllText(path);
             foreach (var section in new[] { "XAudio2.XAudio2Device", "ALAudio.ALAudioDevice" }) if (GetIniValue(text, section, "MaxChannels") is { } value && !Same(value, channels)) allMatch = false;
         }
-        var execOk = filterOff ? File.Exists(audioExecPath) && Same(File.ReadAllText(audioExecPath).Trim(), "DisableLPF") : !File.Exists(audioExecPath);
+        var execOk = usesExec ? File.Exists(audioExecPath) && File.ReadAllText(audioExecPath) == audioCommands : !File.Exists(audioExecPath);
         if (!execOk) allMatch = false;
         foreach (var path in PawnFiles())
         {
@@ -539,7 +590,7 @@ internal sealed class SettingsEngine
     private static readonly string[] SupportedKeys = Enumerable.Range('A', 26).Select(c => ((char)c).ToString())
         .Concat(new[] { "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine" }).Concat(Enumerable.Range(1, 12).Select(i => "F" + i))
         .Concat(new[] { "LeftShift", "RightShift", "LeftControl", "RightControl", "LeftAlt", "RightAlt", "SpaceBar", "Tab", "CapsLock", "Enter", "BackSpace", "Escape", "LeftMouseButton", "RightMouseButton", "MiddleMouseButton", "ThumbMouseButton", "ThumbMouseButton2", "MouseScrollUp", "MouseScrollDown", "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "Insert", "Delete", "Semicolon", "Equals", "Comma", "Underscore", "Period", "Slash", "Tilde", "LeftBracket", "RightBracket", "Backslash", "Quote" })
-        .Concat(Enumerable.Range(0, 10).Select(i => "NumPad" + i)).ToArray();
+        .Concat(new[] { "NumPadZero", "NumPadOne", "NumPadTwo", "NumPadThree", "NumPadFour", "NumPadFive", "NumPadSix", "NumPadSeven", "NumPadEight", "NumPadNine", "Multiply", "Add", "Subtract", "Decimal", "Divide", "NumLock" }).ToArray();
     private const string KbLine = @"(?m)^([ \t]*[.+]?Bindings=\(Name="")([^""]+)("",Command=""(GBA_\w+)[^""]*""\)[^\r\n]*)\r?$";
     private static bool IsGamepadKey(string key) => key.StartsWith("XboxTypeS_", Ci) || key.StartsWith("Gamepad", Ci);
 
@@ -568,7 +619,7 @@ internal sealed class SettingsEngine
 
     internal JsonObject GetControls()
     {
-        AssertPreflight("Controls");
+        AssertPreflight("Controls", false);
         var files = ControlFiles();
         var text = File.ReadAllText(files[0]);
         var active = BindingMap(text);

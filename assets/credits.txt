@@ -1,0 +1,60 @@
+LAUNCHER
+refresh50 - Created the launcher and released it with v0.3.7
+DryreL - Launcher developer since v0.3.8
+
+refresh50, v0.3.7:
+- First Windows launcher, and the Offline and Steam modes on one installation
+- Made the Multipatch work with the launcher, and made the install safe after a power loss
+- Graphics, audio, controls and save backups in the launcher; interface in 8 languages
+
+DryreL, v0.3.8:
+- New native launcher for Windows, Linux, Steam Deck and macOS: no .NET, PowerShell or .bat needed
+- One-click install from verified patch data, with Verify, Repair and Uninstall
+- Updates that bring new fixes and keep your settings
+- Features, Recommended, Cheats, About and FAQ pages; themes, and full keyboard and gamepad navigation
+- Keyboard or gamepad choice, HUD scaling, subtitle size, volume sliders, borderless window, Vulkan renderer
+- Add to Steam, Discord presence, crash reports and the game language list
+
+MULTI PATCH TOOL
+DryreL - Multi Patch Tool Developer
+DryreL - Online Campaign Co-op Through Steam, Split-screen Co-op
+DryreL - Campaign Soft-lock/Boss Fixes: "Homecoming" Razor Wire, "Bon Voyage" Plates + Last Stage
+DryreL - "Crater" Tower 2 Elevator, "Coast" Stealth Mechanism, "Wreckage" Brumak Boss, "Final" Tempest Boss
+DryreL - Mercy Mausoleum Cinematic: Dom's COG tags / Maria necklace, Marcus receives Dom's knife
+DryreL - Ultrawide & resolution UI scaling, Objective Failed screen scaling, D3DERR_INVALIDCALL crash fix
+DryreL - HUD Scaling Fix (virtual 720p canvas, scales with resolution)
+DryreL - Keyboard ESC / Enter navigation in Video Settings, Credits, War Journal; ActionScript PC translation
+DryreL - Installer options: player name, keybind, language selection, HUD scale, FOV and more...
+DryreL - Texture streaming / VRAM profile / 16x AF / 300 FPS ceiling (HD Textures Pack compatible)
+DryreL - Inverted analog stick fix
+DryreL - Debug text and warning removal; DLC placeholder removal; Insane difficulty unlock fix; Quit button
+DryreL - Linux support: Campaign "Connection Lost" fix, Linux resolution / uninstall fixes
+DryreL - Clean installation: automatic backups and one-click revert
+Dlposn - Loading Profile bypass + F10 server travel shortcut, opening intro logos restored
+HJ - Keyboard & Mouse button icons (replaces the gamepad icons in the UI, Warfare_HUD.upk)
+Grilex - High-resolution subtitle font (WarfareFonts2x)
+pasha12071991 - New fonts with Turkish and Ukrainian characters
+wuxinwei110 - Larger subtitle font for Traditional Chinese
+refresh50 - Checkpoint & Load Game fix (Fixsave), Bink / XAudio2 crash fix, Multi-language Missing Objectives fix
+LukeBoya - Act 2 Chapter 4 (Mother Corpser): the whole boss encounter is now a restored, retail-style fight
+LukeBoya - Act 3 to Act 4 Transition (Objective Failed Bugfix)
+
+SUPPORTERS
+Rabbit77rage - Thank you for your kind support of this project!
+You never need to donate to use this mod. Supporters give purely because they want to. This is a non-profit project.
+
+JACINTO BUILD
+Gears of War 3 Jacinto v1.1.1 (UNOFFICIAL PC BUILD)
+Helios - Made the Jacinto build
+Helios - Worked on the Gears 3 campaign
+Helios - Re-made the menu script (with the help of Shauny, creator of Azura)
+Helios - Ported ALL the Gears of War: Judgment characters
+Helios - Ported the voice lines for Kait / Judgment characters
+Helios - Ported all Spanish voice lines for the campaign
+Helios - Added custom weapon skins and new playable Locusts
+Extinct - Scripts to save weapon skins / character selection in game
+Extinct - Ported the Kait character model from Gears 4
+Casper - Ported all Spanish voice lines for multiplayer
+
+This is an unofficial build and not a 1:1 copy of the original campaign.
+It is something to play while waiting for an official Gears release.

@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="JacintoLauncher.SettingsView">
+    <StackPanel>
+
+      <Border Classes="card"><StackPanel>
+        <TextBlock Text="LAUNCHER" Classes="h2"/>
+        <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="LAUNCHER LANGUAGE" Classes="label"/><ComboBox x:Name="LanguageBox" Grid.Column="1"/></Grid>
+        <TextBlock Text="Changes the launcher only; the game language is not modified." Classes="muted" Margin="0,0,0,14"/>
+        <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="THEME COLOR" Classes="label"/><ContentControl x:Name="ThemeHost" Grid.Column="1" VerticalAlignment="Center"/></Grid>
+        <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="APPEARANCE" Classes="label"/><ComboBox x:Name="ThemeModeBox" Grid.Column="1" AutomationProperties.Name="Appearance"><ComboBoxItem Content="Auto"/><ComboBoxItem Content="Light"/><ComboBoxItem Content="Dark"/></ComboBox></Grid>
+      </StackPanel></Border>
+
+      <Border Classes="card"><StackPanel>
+        <TextBlock Text="GAME" Classes="h2"/>
+        <Grid Classes="row" ColumnDefinitions="240,*,Auto"><TextBlock Text="Game language" Classes="label"/><ComboBox x:Name="GameLanguageBox" Grid.Column="1"/><Button x:Name="LanguageModButton" Grid.Column="2" Content="Open on Nexus Mods" Margin="10,0,0,0" IsVisible="False" Click="LanguageMod_Click"/></Grid>
+        <TextBlock x:Name="GameLanguageNote" Classes="muted" Margin="0,0,0,10" IsVisible="False"/>
+        <CheckBox x:Name="SkipIntroCheck" Content="Skip Intro" Click="SkipIntro_Click"/>
+        <CheckBox x:Name="BackupCheck" Content="Back up saves before every launch" Click="Backup_Toggle"/>
+        <CheckBox x:Name="RunShakeCheck" Content="Camera shake while running (roadie run)"/>
+        <CheckBox x:Name="HordeBeastCheck" Content="Horde and Beast in the main menu (experimental)" ToolTip.Tip="The Jacinto build ships them switched off. They are unfinished and may not work."/>
+        <WrapPanel Margin="0,10,0,0">
+          <Button Content="Choose game folder" Margin="0,0,10,8" Click="Browse_Click"/>
+          <Button x:Name="ShortcutButton" Content="Create Desktop Shortcut" Margin="0,0,10,8" Click="Shortcut_Click"/>
+          <Button x:Name="SteamButton" Content="Add to Steam" Margin="0,0,10,8" Click="Steam_Click"/>
+          <Button x:Name="VerifyButton" Content="Verify game files" Margin="0,0,10,8" Click="Verify_Click"/>
+          <Button Content="Show install guide" Margin="0,0,10,8" Click="Guide_Click"/>
+          <Button x:Name="RepairButton" Content="Repair files" Margin="0,0,10,8" IsVisible="False" Click="Repair_Click"/>
+        </WrapPanel>
+        <TextBlock x:Name="GamePathText" Classes="muted"/>
+      </StackPanel></Border>
+
+      <Border x:Name="CompatibilityCard" Classes="card" IsVisible="False"><StackPanel>
+        <TextBlock Text="WINDOWS COMPATIBILITY" Classes="h2"/>
+        <TextBlock x:Name="LayerText" Classes="muted" Margin="0,0,0,12"/>
+        <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Runner path (umu-run, proton or wine)" Classes="label"/><TextBox x:Name="RunnerBox" Grid.Column="1"/></Grid>
+        <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Prefix folder" Classes="label"/><TextBox x:Name="PrefixBox" Grid.Column="1"/></Grid>
+        <Button Content="Save Settings" HorizontalAlignment="Left" Click="Save_Click"/>
+      </StackPanel></Border>
+
+      <Border Classes="card"><StackPanel>
+        <TextBlock Text="SAVE MANAGEMENT" Classes="h2"/>
+        <TextBlock Text="Backs up checkpoints and the profile with SHA-256 verification. Offline and Steam use the same saves." Classes="muted" Margin="0,0,0,12"/>
+        <Button Content="Create Save Backup" HorizontalAlignment="Left" Click="Backup_Click"/>
+        <Grid Classes="row" ColumnDefinitions="*,Auto" Margin="0,12,0,0"><ComboBox x:Name="BackupBox"/><Button x:Name="RestoreButton" Grid.Column="1" Content="Restore Selected Backup" Margin="10,0,0,0" Click="Restore_Click"/></Grid>
+        <TextBlock x:Name="BackupStatusText" Classes="muted" Margin="0,10,0,0"/>
+      </StackPanel></Border>
+
+      <Border Classes="card"><StackPanel>
+        <TextBlock Text="PRIVACY" Classes="h2"/>
+        <CheckBox x:Name="TelemetryCheck" Content="Send anonymous crash reports and usage statistics" Click="Telemetry_Click"/>
+        <TextBlock Text="Launcher and game crash reports, with the end of the game log, and launch counts by mode, OS and language. Names, Steam IDs, IP addresses and file paths are removed before sending." Classes="muted" Margin="0,6,0,0"/>
+        <TextBlock Text="Usage statistics also show which pages, settings tabs and main buttons are used, never what you type or choose." Classes="muted" Margin="0,6,0,0"/>
+        <TextBlock Text="The online count at the bottom of the menu keeps a one-way hash of your IP address, so each player counts once in the total." Classes="muted" Margin="0,6,0,0"/>
+      </StackPanel></Border>
+    </StackPanel>
+</UserControl>

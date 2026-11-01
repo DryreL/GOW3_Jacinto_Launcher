@@ -5,9 +5,10 @@ var count = 0;
 void Check(bool ok, string message) { count++; if (!ok) throw new Exception("FAIL: " + message); }
 void Throws(Action action, string message) { count++; try { action(); } catch { return; } throw new Exception("FAIL: expected failure: " + message); }
 var temp = Path.Combine(Path.GetTempPath(), "Jacinto Settings Tests " + Guid.NewGuid().ToString("N"));
+Environment.SetEnvironmentVariable("JACINTO_LOG_DIR", Path.Combine(temp, "logs")); // The refused inputs below must not fill the real log with errors.
 var game = Path.Combine(temp, "Game With Spaces"); var docs = Path.Combine(temp, "Documents With Spaces"); var tx = Path.Combine(temp, "Transactions");
 Directory.CreateDirectory(game); Directory.CreateDirectory(docs);
-string Put(string relative, string text) { var p = Path.Combine(game, relative); Directory.CreateDirectory(Path.GetDirectoryName(p)!); File.WriteAllText(p, text); return p; }
+string Put(string relative, string text) { var p = Path.Combine(game, relative.Replace('\\', Path.DirectorySeparatorChar)); Directory.CreateDirectory(Path.GetDirectoryName(p)!); File.WriteAllText(p, text); return p; }
 string Hash(string p) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(p)));
 try
 {
@@ -34,7 +35,22 @@ try
     inputs.Add(Put(cfg + "\\GearInput.ini",inputText)); inputs.Add(Put(cfg + "\\DefaultInput.ini",inputText));
     var savesDir = Path.Combine(game,"GearGame","SaveData"); Directory.CreateDirectory(savesDir); var save = Path.Combine(savesDir,"keep.sav"); File.WriteAllText(save,"save sentinel"); var saveHash=Hash(save);
     var package=Path.Combine(game,"GearGame","Script","GearGame.u");var packageHash=Hash(package);var steamDllHash=Hash(Path.Combine(game,"Binaries","Win64","steam_api64.dll"));
-    Environment.SetEnvironmentVariable("JACINTO_SETTINGS_TRANSACTION_ROOT",tx); Environment.SetEnvironmentVariable("JACINTO_SETTINGS_DOCUMENTS",docs); Environment.SetEnvironmentVariable("JACINTO_SETTINGS_SCRIPT",Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"..","..","..","..","tools","MultipatchSettings.ps1")));
+    Environment.SetEnvironmentVariable("JACINTO_SETTINGS_TRANSACTION_ROOT",tx); Environment.SetEnvironmentVariable("JACINTO_SETTINGS_DOCUMENTS",docs);
+
+    // ---- input profile: the keyboard form of GearGame.u and back, leaving the game's own Enter reference alone ----
+    var padForm = Convert.FromHexString("00" + "2123BD000000000000" + "11" + "21B04A000000000000" + "1616180D00812D01DB29" + "07000000546573744D6500");
+    var keyForm = (byte[])padForm.Clone(); InputProfile.ToKeyboard(keyForm);
+    Check(!InputProfile.IsGamepad(keyForm) && InputProfile.IsGamepad(padForm), "input profile is read from the package");
+    Check(Convert.ToHexString(keyForm).StartsWith("0021B04A000000000000" + "1121B04A", StringComparison.Ordinal), "keyboard form replaces the pad reference");
+    InputProfile.ToGamepad(keyForm);
+    Check(keyForm.SequenceEqual(padForm), "gamepad form restores the bytes and keeps the stock reference");
+
+    // ---- subtitle fonts: which files and font name each language and size needs ----
+    Check(SubtitleFonts.FontName("INT", "big", false) == SubtitleFonts.Big && SubtitleFonts.FontName("INT", "normal", false) == SubtitleFonts.Stock, "subtitle size picks the font name");
+    Check(SubtitleFonts.Sources("CHN", "normal", false).Large == "extra/WarfareFonts2x_cn.upk" && SubtitleFonts.FontName("CHN", "big", false) == SubtitleFonts.Big, "Traditional Chinese uses its own font files");
+    Check(SubtitleFonts.FontName("RUS", "big", false) == SubtitleFonts.Stock && SubtitleFonts.Sources("RUS", "big", false).Normal is null, "a language with its own font is left alone");
+    Check(SubtitleFonts.FontName("RUS", "big", true) == SubtitleFonts.Big, "forcing the font overrides that");
+    Check(GameLanguages.Known.Any(l => l.Code == "CHN") && !GameLanguages.Known.Any(l => l.Code == "CHT"), "Traditional Chinese is the CHN pack");
 
     // ---- single installation: layout + network mode ----
     var listenUrl = Convert.FromHexString("1f3f6c6f6164636865636b706f696e7400160ed0e9ffff614200d0a500001f3f6c697374656e0016");
@@ -85,6 +101,12 @@ try
     Throws(() => MultipatchBridge.LaunchArguments(batDir), "unexpected start arguments are refused");
     var modeConfig = new LauncherConfig { PlayerName = "Marcus" }; modeConfig.Save(temp);
     Check(LauncherConfig.Load(temp)?.PlayerName == "Marcus", "launcher config persists");
+    Check(!modeConfig.Reload(temp), "own save is not a change");
+    File.WriteAllText(LauncherConfig.FilePath(temp), "{\"PlayerName\":\"Dom\",\"Theme\":\"red\"}");
+    Check(modeConfig.Reload(temp) && modeConfig.PlayerName == "Dom" && modeConfig.Theme == "red", "config edited by hand is taken");
+    File.WriteAllText(LauncherConfig.FilePath(temp), "{\"PlayerName\":");
+    try { modeConfig.Reload(temp); Check(false, "half an edit is refused"); } catch (System.Text.Json.JsonException) { Check(modeConfig.PlayerName == "Dom", "half an edit changes nothing"); }
+    modeConfig.Save(temp);
     var saveResult=MultipatchBridge.BackupAllSaves(game,Path.Combine(temp,"Backups")); Check(saveResult.Files==1,"save management backup");
     var profileDir=Path.Combine(game,"Binaries","GearGame","SaveData"); Directory.CreateDirectory(profileDir); File.WriteAllText(Path.Combine(profileDir,"CHANGE ME.sav"),"profile sentinel");
     var withProfile=MultipatchBridge.BackupAllSaves(game,Path.Combine(temp,"Backups"));
@@ -100,12 +122,12 @@ try
     var after1=Hash(ini1); var repeat=MultipatchBridge.ApplyGraphicsThroughMultipatch(game,request); Check(Hash(ini1)==after1,"idempotent repeat apply");
     Check(File.ReadAllText(ini1).Split("MaxAnisotropy=").Length-1==1,"no duplicate INI key");
     var bad=JsonNode.Parse(request.ToJsonString())!.AsObject(); bad["AntiAliasing"]="msaa8x"; Throws(()=>MultipatchBridge.ApplyGraphicsThroughMultipatch(game,bad),"reject unsupported MSAA 8x"); Check(Hash(ini1)==after1,"invalid setting leaves files unchanged");
-    var lockFile=new FileStream(start,FileMode.Open,FileAccess.ReadWrite,FileShare.None); Throws(()=>MultipatchBridge.ApplyGraphicsThroughMultipatch(game,request),"locked target triggers failure"); lockFile.Dispose(); Check(Hash(ini1)==after1,"failed transaction rolls back prior writes");
+    if(OperatingSystem.IsWindows()){var lockFile=new FileStream(start,FileMode.Open,FileAccess.ReadWrite,FileShare.None); Throws(()=>MultipatchBridge.ApplyGraphicsThroughMultipatch(game,request),"locked target triggers failure"); lockFile.Dispose(); Check(Hash(ini1)==after1,"failed transaction rolls back prior writes");}
     var rolled=MultipatchBridge.RollbackSettingsThroughMultipatch(game,repeat["TransactionId"]!.GetValue<string>()); Check(rolled["Success"]!.GetValue<bool>(),"latest graphics rollback");
     rolled=MultipatchBridge.RollbackSettingsThroughMultipatch(game,applied["TransactionId"]!.GetValue<string>()); Check(rolled["Success"]!.GetValue<bool>(),"original graphics rollback");
     Check(Hash(ini1)==beforeIni,"graphics rollback restored engine INI ("+Hash(ini1)+" vs "+beforeIni+")"); Check(Hash(camera)==beforeCam,"graphics rollback restored camera INI"); Check(Hash(start)==beforeStart,"graphics rollback restored launch script");
     // Audio / camera options (Multi Patch Tool Game Settings): filter command file + -exec, MaxChannels, run shake.
-    var pawn=Put(cfg+"\\DefaultPawn.ini","[GearGame.GearPawn]\r\nRoadieRunShakyCamDampeningFactor=0.6f\r\n[Other]\r\nX=1\r\n"); var pawnBefore=Hash(pawn); var audioExec=Path.Combine(game,"Binaries","Win64","Gears3_Audio.txt");
+    var pawn=Put(cfg+"\\DefaultPawn.ini","[GearGame.GearPawn]\r\nRoadieRunShakyCamDampeningFactor=0.6f\r\n[Other]\r\nX=1\r\n"); var pawnBefore=Hash(pawn); var audioExec=Path.Combine(game,"Binaries","Gears3_Audio.txt");
     var audioReq=JsonNode.Parse(request.ToJsonString())!.AsObject(); audioReq["AudioFilter"]=false; audioReq["AudioChannels"]=64; audioReq["DisableRunShake"]=false;
     var audioTx=MultipatchBridge.ApplyGraphicsThroughMultipatch(game,audioReq); Check(audioTx["Applied"]?["IsApplied"]?.GetValue<bool>()==true,"audio settings verified");
     Check(File.ReadAllText(audioExec).Trim()=="DisableLPF","audio filter off writes DisableLPF");
@@ -200,11 +222,211 @@ try
     }
     MultipatchBridge.RollbackSettingsThroughMultipatch(game, guardedApply["TransactionId"]!.GetValue<string>());
     Check(guardedScripts.All(path => Hash(path) == guardedHashes[path]), "protected BAT settings rollback restores exact bytes");
+    // Shell start script, as the Multipatch writes on Linux / SteamOS.
+    var shDir = Path.Combine(temp, "Sh"); Directory.CreateDirectory(shDir);
+    File.WriteAllText(Path.Combine(shDir, "Gears3_Start_Game.sh"), "#!/bin/sh\nARGS=\"-WINDOWED -VSYNC -ResX=1280 -ResY=800 -language=INT\"\nexec wine GearGame.exe $ARGS\n");
+    Check(MultipatchBridge.LaunchArguments(shDir) == "-WINDOWED -VSYNC -ResX=1280 -ResY=800 -language=INT", "Multipatch .sh start arguments parsed");
+    // "native" follows the physical screen size reported by the UI, not a DPI-virtualized one.
+    SettingsEngine.Screens = () => new[] { (0, 0, 2560, 1440, true), (2560, 0, 4480, 1080, false) };
+    var nativeReq = JsonNode.Parse(request.ToJsonString())!.AsObject(); nativeReq["Resolution"] = "native";
+    var nativeTx = MultipatchBridge.ApplyGraphicsThroughMultipatch(game, nativeReq); Check(File.ReadAllText(ini1).Contains("ResX=2560") && File.ReadAllText(start).Contains("-ResX=2560 -ResY=1440"), "native uses the primary screen");
+    var spanReq = JsonNode.Parse(request.ToJsonString())!.AsObject(); spanReq["Resolution"] = "span";
+    var spanTx = MultipatchBridge.ApplyGraphicsThroughMultipatch(game, spanReq); Check(File.ReadAllText(ini1).Contains("ResX=4480") && File.ReadAllText(ini1).Contains("ResY=1440"), "span covers every screen");
+    MultipatchBridge.RollbackSettingsThroughMultipatch(game, spanTx["TransactionId"]!.GetValue<string>()); MultipatchBridge.RollbackSettingsThroughMultipatch(game, nativeTx["TransactionId"]!.GetValue<string>());
+    // Compatibility layers: argument order and the JacintoNet DLL override.
+    var wineStart = GameRunner.BuildStart(game, "-WINDOWED -VSYNC -ResX=1 -ResY=1 -language=INT", NetworkMode.Steam, new LauncherConfig { WinePrefix = Path.Combine(temp, "Prefix") }, new GameRunner.Layer("proton", "/fake/proton"));
+    if (GameRunner.NeedsCompatibilityLayer) Check(wineStart.ArgumentList[0] == "run" && wineStart.ArgumentList[1].EndsWith("GearsOfWar3.exe") && wineStart.ArgumentList[2] == "-WINDOWED" && wineStart.Environment["WINEDLLOVERRIDES"] == "wsock32=n,b", "Proton start line");
+    else Check(wineStart.FileName.EndsWith("GearsOfWar3.exe") && wineStart.Arguments.StartsWith("-WINDOWED"), "Windows starts the game directly");
+    // ---------------------------------------------------------------- patch deltas
+    byte[] RoundTrip(byte[] before, byte[] after)
+    {
+        var path = Path.Combine(temp, "delta-before.bin"); File.WriteAllBytes(path, before);
+        using var delta = new MemoryStream(MultipatchInstaller.BuildDelta(before, after));
+        using var output = new MemoryStream();
+        MultipatchInstaller.ApplyDelta(delta, path, output);
+        return output.ToArray();
+    }
+    var original = new byte[200_000]; new Random(7).NextBytes(original);
+    var sparse = (byte[])original.Clone(); sparse[0] ^= 1; sparse[500] ^= 1; sparse[510] ^= 1; sparse[199_999] ^= 1;
+    Check(RoundTrip(original, sparse).SequenceEqual(sparse), "same-length delta rebuilds the file");
+    Check(MultipatchInstaller.BuildDelta(original, sparse).Length < 300, "sparse delta stays small");
+    var grown = original.Take(1000).Concat(new byte[] { 1, 2, 3 }).Concat(original.Skip(1500)).ToArray();
+    Check(RoundTrip(original, grown).SequenceEqual(grown), "different-length delta rebuilds the file");
+    Check(MultipatchInstaller.BuildDelta(original, grown).Length < 200, "a block removed from the middle stays a small delta");
+    var fixups = (byte[])grown.Clone(); for (var i = 2000; i < fixups.Length; i += 300) fixups[i] ^= 1;
+    Check(RoundTrip(original, fixups).SequenceEqual(fixups) && MultipatchInstaller.BuildDelta(original, fixups).Length < fixups.Length / 5, "shifted data with scattered changes stays small");
+    var moved = original.Skip(100_000).Concat(original.Take(100_000)).ToArray();
+    Check(RoundTrip(original, moved).SequenceEqual(moved) && MultipatchInstaller.BuildDelta(original, moved).Length < 200, "moved blocks are found");
+    var movieFolder = Path.Combine(temp, "Movie Game", "GearGame", "Movies"); Directory.CreateDirectory(movieFolder);
+    Check(PreLaunchCheck.OversizeMovies(Path.Combine(temp, "Movie Game")).Length == 0 && PreLaunchCheck.OversizeMovies(Path.Combine(temp, "No Game")).Length == 0, "no warning without large movies");
+    using (var small = File.Create(Path.Combine(movieFolder, "Exactly4.bik"))) small.SetLength(4L << 30);
+    using (var large = File.Create(Path.Combine(movieFolder, "TOWER_OUTRO.BIK"))) large.SetLength((4L << 30) + 1);
+    Check(PreLaunchCheck.OversizeMovies(Path.Combine(temp, "Movie Game")).SequenceEqual(new[] { "TOWER_OUTRO.BIK" }), "only movies over 4 GB are reported, in any case");
+    Directory.Delete(Path.Combine(temp, "Movie Game"), true);
+    var fakeArchive = new MemoryStream();
+    using (var gzip = new System.IO.Compression.GZipStream(fakeArchive, System.IO.Compression.CompressionLevel.Fastest, true))
+    using (var writer = new System.Formats.Tar.TarWriter(gzip))
+        writer.WriteEntry(new System.Formats.Tar.PaxTarEntry(System.Formats.Tar.TarEntryType.RegularFile, "dxvk-" + Dxvk.Version + "/x64/d3d9.dll") { DataStream = new MemoryStream(new byte[] { 1, 2, 3 }) });
+    var fakeDll = Path.Combine(temp, "d3d9.dll");
+    Throws(() => Dxvk.Extract(fakeArchive.ToArray(), fakeDll), "a DXVK library with the wrong hash is refused");
+    Check(!File.Exists(fakeDll) && !File.Exists(fakeDll + ".jacinto-tmp"), "a refused DXVK library leaves nothing behind");
+    var languageGame = Path.Combine(temp, "Language Game"); Directory.CreateDirectory(Path.Combine(languageGame, "GearGame", "Localization", "FRA"));
+    Check(GameLanguages.All(languageGame).Any(l => l.Code == "FRA") && GameLanguages.Installed(languageGame, "FRA") && !GameLanguages.Installed(languageGame, "TUR"), "a pack in the game folder is listed");
+    Check(RoundTrip(original, original).SequenceEqual(original), "identical input");
+    Check(RoundTrip(original, Array.Empty<byte>()).Length == 0, "emptied file");
+
+    // ---------------------------------------------------------------- Steam shortcut
+    if (OperatingSystem.IsWindows())
+    {
+        var lnk = DesktopShortcut.Create(temp, Environment.ProcessPath!, "Jacinto Test");
+        var lnkBytes = File.ReadAllBytes(lnk);
+        Check(lnkBytes[0] == 0x4C && System.Text.Encoding.Unicode.GetString(lnkBytes).Contains("Jacinto Test") && System.Text.Encoding.ASCII.GetString(lnkBytes).Contains(Path.GetFileName(Environment.ProcessPath!)), "desktop shortcut holds its target and description");
+        File.Delete(lnk);
+    }
+    var vdf = SteamShortcut.Merge(null, @"C:\Game\L.exe", null);
+    var other = System.Text.Encoding.UTF8.GetBytes("\0shortcuts\0\00\0\u0001AppName\0Other Game\0\u0002IsHidden\0\0\0\0\0\0tags\0\b\b\b\b");
+    var merged = SteamShortcut.Merge(other, @"C:\Game\L.exe", null);
+    string Text(byte[] b) => System.Text.Encoding.UTF8.GetString(b);
+    Check(Text(vdf).Contains("\u0001AppName\0" + SteamShortcut.AppName + "\0") && vdf[^1] == 8 && vdf[^2] == 8, "new shortcuts.vdf");
+    Check(Text(merged).Contains("Other Game") && Text(merged).Contains(SteamShortcut.AppName), "existing Steam entries are kept");
+    var again = SteamShortcut.Merge(merged, @"D:\Moved\L.exe", null);
+    Check(Text(again).Split(SteamShortcut.AppName).Length == 2 && Text(again).Contains(@"D:\Moved\L.exe") && !Text(again).Contains(@"C:\Game\L.exe"), "adding twice refreshes instead of duplicating");
+    Check(Text(again).Contains("Other Game"), "refresh keeps other entries");
+    Throws(() => SteamShortcut.Merge(new byte[] { 1, 2, 3 }, "x", null), "unknown shortcuts.vdf is refused");
+    Check((SteamShortcut.AppId("\"x\"", "y") & 0x80000000) != 0, "non-Steam app id has the top bit");
+
+    // ---------------------------------------------------------------- gamepad
+    var pad = new PadMapper();
+    Check(pad.Step(new PadState(A: true, Up: false, Down: false, Left: false, Right: false, B: false, Lb: false, Rb: false), 50).SequenceEqual(new[] { PadAction.Accept }), "A press");
+    Check(pad.Step(new PadState(A: true, Up: false, Down: false, Left: false, Right: false, B: false, Lb: false, Rb: false), 50).Count == 0, "held A does not repeat");
+    var down = new PadState(false, true, false, false, false, false, false, false);
+    pad = new PadMapper();
+    Check(pad.Step(down, 50).SequenceEqual(new[] { PadAction.Next }), "D-pad press moves once");
+    Check(pad.Step(down, 100).Count == 0, "no repeat before the delay");
+    Check(pad.Step(down, 400).SequenceEqual(new[] { PadAction.Next }), "held direction repeats after the delay");
+    Check(pad.Step(default, 50).Count == 0, "release does nothing");
+
+    // ---------------------------------------------------------------- updates
+    Check(LauncherUpdate.Parse("""{"tag_name":"v99.1.0","body":"notes","assets":[]}""") is { Notes: "notes" } noAssets && !LauncherUpdate.IsNewer(noAssets), "a release without the expected files is not offered");
+    var platform = (OperatingSystem.IsWindows() ? "Windows" : OperatingSystem.IsMacOS() ? "macOS" : "Linux") + (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "_arm64" : "_x64");
+    var assets = $$"""{"tag_name":"v99.1.0","assets":[{"name":"Gears3_Multipatch_Launcher_v99.1.0_{{platform}}.zip","browser_download_url":"https://a/z"},{"name":"SHA256SUMS.txt","browser_download_url":"https://a/s"}]}""";
+    Check(LauncherUpdate.IsNewer(LauncherUpdate.Parse(assets)!), "newer release with files is offered");
+    Check(!LauncherUpdate.IsNewer(LauncherUpdate.Parse(assets.Replace("v99.1.0", "v0.0.1"))!), "older release is not offered");
+    Check(!LauncherUpdate.IsNewer(LauncherUpdate.Parse(assets.Replace("\"tag_name\":\"v99.1.0\"", "\"tag_name\":\"v99.2.0\""))!), "a zip named for another version is not taken");
+    Check(LauncherUpdate.Parse("""{"tag_name":"v99.1.0","prerelease":true}""") is null, "prereleases are ignored");
+
+    // A local server stands in for GitHub: the checksum gates the download, and the verified archive is unpacked.
+    var updateDir = Path.Combine(temp, "Update", "Launcher"); Directory.CreateDirectory(updateDir);
+    var zipSource = Path.Combine(temp, "ZipSource"); Directory.CreateDirectory(zipSource);
+    File.WriteAllText(Path.Combine(zipSource, Path.GetFileName(Environment.ProcessPath!)), "not a program");
+    var zipPath = Path.Combine(temp, "update.zip"); System.IO.Compression.ZipFile.CreateFromDirectory(zipSource, zipPath);
+    var zipBytes = File.ReadAllBytes(zipPath); var zipHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(zipBytes));
+    var sums = "";
+    using (var listener = new System.Net.HttpListener())
+    {
+        var portProbe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0); portProbe.Start(); var port = ((System.Net.IPEndPoint)portProbe.LocalEndpoint).Port; portProbe.Stop();
+        var url = $"http://localhost:{port}/"; listener.Prefixes.Add(url); listener.Start();
+        var serving = Task.Run(async () =>
+        {
+            while (listener.IsListening)
+            {
+                System.Net.HttpListenerContext context;
+                try { context = await listener.GetContextAsync(); } catch (Exception) { return; }
+                var body = context.Request.Url!.AbsolutePath.EndsWith("sums") ? System.Text.Encoding.ASCII.GetBytes(sums) : zipBytes;
+                await context.Response.OutputStream.WriteAsync(body); context.Response.Close();
+            }
+        });
+        var download = new LauncherUpdate.Release(new Version(99, 0), "", url + "zip", url + "sums", "a.zip");
+        sums = "0000  a.zip\n";
+        Throws(() => LauncherUpdate.DownloadAndStartAsync(download, updateDir, _ => { }).GetAwaiter().GetResult(), "a wrong checksum stops the update");
+        Check(!File.Exists(updateDir + ".update.zip") && !Directory.Exists(updateDir + ".update"), "a rejected download leaves nothing behind");
+        sums = zipHash + " *a.zip\n";
+        Throws(() => LauncherUpdate.DownloadAndStartAsync(download, updateDir, _ => { }).GetAwaiter().GetResult(), "the stand-in archive cannot be started");
+        Check(File.Exists(Path.Combine(updateDir + ".update", Path.GetFileName(Environment.ProcessPath!))), "a verified download is unpacked next to the launcher");
+        listener.Stop();
+    }
+
+    // ---------------------------------------------------------------- HD Textures Pack caps
+    var capsGame = Path.Combine(temp, "CapsGame"); var capsDocs = Path.Combine(temp, "CapsDocs");
+    var capsIni = Path.Combine(capsGame, "GearGame", "Config", "GearEngine.ini"); var capsBase = Path.Combine(capsGame, "Engine", "Config", "BaseEngine.ini"); var content = Path.Combine(capsGame, "GearGame", "Content");
+    foreach (var dir in new[] { Path.GetDirectoryName(capsIni)!, Path.GetDirectoryName(capsBase)!, content }) Directory.CreateDirectory(dir);
+    string Row(string g, int size, int bias) => $"TEXTUREGROUP_{g}=(MinLODSize=1,MaxLODSize={size},LODBias={bias},MipFilter=Linear)";
+    var stockIni = "[SystemSettings]\r\n" + Row("World", 1024, 0) + "\r\n" + Row("WorldSpecular", 512, 1) + "\r\n" + Row("Character", 1024, 0) + "\r\n" + Row("VehicleSpecular", 512, 1) + "\r\n" + Row("Effects", 1024, 0) + "\r\n[Other]\r\n" + Row("World", 7, 7) + "\r\n";
+    var stockBase = stockIni.Replace("MaxLODSize=1024", "MaxLODSize=4096");
+    File.WriteAllText(capsIni, stockIni); File.WriteAllText(capsBase, stockBase);
+    HdTextureCaps.Apply(capsGame, capsDocs, "0");
+    Check(File.ReadAllText(capsIni) == stockIni && File.ReadAllText(capsBase) == stockBase, "no HD pack: stock files are not changed");
+    File.WriteAllText(Path.Combine(content, "HD_TexturePack_Phase1.version"), "1.2\r\n");
+    HdTextureCaps.Apply(capsGame, capsDocs, "0");
+    Check(File.ReadAllText(capsIni) == stockIni, "older pack raises nothing");
+    File.WriteAllText(Path.Combine(content, "HD_TexturePack_Phase1.version"), "1.3\r\n");
+    HdTextureCaps.Apply(capsGame, capsDocs, "0");
+    var phase1Text = File.ReadAllText(capsIni);
+    Check(phase1Text.Contains(Row("Character", 4096, 0)) && phase1Text.Contains(Row("VehicleSpecular", 4096, 0)), "Phase 1 raises Character, Weapon and Vehicle");
+    Check(phase1Text.Contains(Row("World", 1024, 0)) && phase1Text.Contains(Row("WorldSpecular", 512, 1)), "Phase 1 alone leaves World at stock");
+    Check(phase1Text.Contains(Row("Effects", 1024, 0)) && phase1Text.Contains(Row("World", 7, 7)), "other groups and sections are untouched");
+    File.WriteAllText(Path.Combine(content, "HD_TexturePack_Phase2.version"), "1.3");
+    HdTextureCaps.Apply(capsGame, capsDocs, "1");
+    var bothText = File.ReadAllText(capsIni);
+    Check(bothText.Contains(Row("World", 4096, 1)) && bothText.Contains(Row("WorldSpecular", 4096, 0)), "Phase 1 + 2 raises World, and the Texture Quality bias is kept");
+    File.Delete(Path.Combine(content, "HD_TexturePack_Phase1.version")); File.Delete(Path.Combine(content, "HD_TexturePack_Phase2.version"));
+    HdTextureCaps.Apply(capsGame, capsDocs, "0");
+    Check(File.ReadAllText(capsIni) == stockIni, "removing the pack brings stock caps back");
+
+    // ---------------------------------------------------------------- save restore
+    var saveGame = Path.Combine(temp, "SaveGame"); var saveRoot = Path.Combine(temp, "SaveBackups");
+    var checkpoint = Path.Combine(saveGame, "GearGame", "SaveData", "cp.sav"); var profile = Path.Combine(saveGame, "Binaries", "GearGame", "SaveData", "p.sav");
+    Directory.CreateDirectory(Path.GetDirectoryName(checkpoint)!); Directory.CreateDirectory(Path.GetDirectoryName(profile)!);
+    File.WriteAllText(checkpoint, "first"); File.WriteAllText(profile, "profile");
+    var firstBackup = MultipatchBridge.BackupAllSaves(saveGame, saveRoot);
+    File.WriteAllText(checkpoint, "second"); File.WriteAllText(Path.Combine(Path.GetDirectoryName(checkpoint)!, "new.sav"), "later");
+    Check(MultipatchBridge.ListSaveBackups(saveRoot) is { Length: 1 } one && one[0].Files == 2, "backup is listed");
+    MultipatchBridge.RestoreSaves(saveGame, firstBackup.Directory, saveRoot);
+    Check(File.ReadAllText(checkpoint) == "first" && File.ReadAllText(profile) == "profile", "restore brings the saves back");
+    Check(!File.Exists(Path.Combine(Path.GetDirectoryName(checkpoint)!, "new.sav")), "restore matches the backup exactly");
+    Check(MultipatchBridge.ListSaveBackups(saveRoot).Length == 2, "current saves are backed up before a restore");
+    File.WriteAllText(Path.Combine(firstBackup.Directory, "cp.sav"), "tampered"); File.WriteAllText(checkpoint, "keep");
+    Throws(() => MultipatchBridge.RestoreSaves(saveGame, firstBackup.Directory, saveRoot), "a damaged backup is refused");
+    Check(File.ReadAllText(checkpoint) == "keep", "a refused restore changes nothing");
+
+    var keyNames = MultipatchBridge.LoadControlsFromMultipatch(game)["SupportedKeys"]!.AsArray().Select(k => k!.GetValue<string>()).ToArray();
+    Check(keyNames.Contains("NumPadNine") && keyNames.Contains("Multiply") && !keyNames.Contains("NumPad9"), "numpad keys use the engine's own names");
+
+    var nameGame = Path.Combine(temp, "name game");
+    foreach (var d in new[] { "Binaries/Win64", "GearGame/Config", "GearGame/Localization/INT", "GearGame/Localization/ESM" }) Directory.CreateDirectory(Path.Combine(nameGame, d));
+    File.WriteAllText(Path.Combine(nameGame, "Binaries/Win64/sera.ini"), "[Game]\r\nplayer_name=CHANGE ME\r\n");
+    File.WriteAllText(Path.Combine(nameGame, "GearGame/Config/DefaultGame.ini"), "[Other]\r\nName=keep\r\n[DefaultPlayer]\r\nName=Helios\r\nteam=255\r\n");
+    File.WriteAllText(Path.Combine(nameGame, "GearGame/Localization/INT/GearGame.int"), "NotSignedIn=(Jacinto 1.1.1)\r\nNotSignedInString=Jacinto 1.1.1\r\n");
+    File.WriteAllText(Path.Combine(nameGame, "GearGame/Localization/ESM/geargame.esm"), "NotSignedInString=Jacinto Build\r\n", System.Text.Encoding.Unicode);
+    PlayerIdentity.Apply(nameGame, "Gökdeniz", null);
+    Check(File.ReadAllText(Path.Combine(nameGame, "Binaries/Win64/sera.ini")).Contains("player_name=Gökdeniz"), "sera.ini gets the player name");
+    var nameIni = File.ReadAllText(Path.Combine(nameGame, "GearGame/Config/DefaultGame.ini"));
+    Check(nameIni.Contains("[DefaultPlayer]\r\nName=Gökdeniz") && nameIni.Contains("[Other]\r\nName=keep"), "only [DefaultPlayer] Name changes");
+    Check(!File.ReadAllText(Path.Combine(nameGame, "GearGame/Localization/INT/GearGame.int")).Contains("Jacinto"), "main menu no longer shows the build version");
+    var esmBytes = File.ReadAllBytes(Path.Combine(nameGame, "GearGame/Localization/ESM/geargame.esm"));
+    Check(esmBytes[0] == 0xFF && System.Text.Encoding.Unicode.GetString(esmBytes, 2, esmBytes.Length - 2).Contains("NotSignedInString=Gökdeniz"), "UTF-16 localization stays UTF-16");
+    Check(PlayerIdentity.GameName("A?B=C#\"1234567890123456789") == "ABC123456789", "game name loses separators and keeps 12 characters");
+
+    var crashGame = Path.Combine(temp, "crash game"); var crashLogs = Path.Combine(crashGame, "GearGame", "Logs"); Directory.CreateDirectory(crashLogs);
+    var crashStart = DateTime.UtcNow.AddMinutes(-1);
+    File.WriteAllText(Path.Combine(crashLogs, "Launch.log"), "Log: fine\n", System.Text.Encoding.Unicode);
+    Check(GameCrash.Find(crashGame, crashStart, out var cleanSeen) is null && cleanSeen > crashStart, "a clean log is no crash, and is not read again");
+    File.WriteAllText(Path.Combine(crashLogs, "Launch.log"), "Log: fine\nCritical: Assertion failed: Offset != INDEX_NONE [UnAsyncLoading.cpp] [Line: 843]\nLog: end\n", System.Text.Encoding.Unicode);
+    var fatalReport = GameCrash.Find(crashGame, crashStart, out var fatalSeen);
+    Check(fatalReport?.Title.Contains("INDEX_NONE") == true && fatalReport.LogTail.Contains("Log: end"), "a fatal log line is a crash, read as UTF-16");
+    Check(GameCrash.Find(crashGame, fatalSeen, out _) is null, "the same crash is not reported twice");
+    var dump = new byte[64]; "MDMP"u8.CopyTo(dump); BitConverter.TryWriteBytes(dump.AsSpan(8), 1u); BitConverter.TryWriteBytes(dump.AsSpan(12), 16u);
+    BitConverter.TryWriteBytes(dump.AsSpan(16), 6u); BitConverter.TryWriteBytes(dump.AsSpan(24), 28u);
+    BitConverter.TryWriteBytes(dump.AsSpan(36), 0xC0000005u); BitConverter.TryWriteBytes(dump.AsSpan(52), 0x140001234ul);
+    File.WriteAllBytes(Path.Combine(crashLogs, "unreal-v8741.dmp"), dump);
+    var dumpException = GameCrash.ReadDumpException(Path.Combine(crashLogs, "unreal-v8741.dmp"));
+    Check(dumpException == ("0xC0000005", "0x140001234"), "the crash code is read from a minidump");
+
     Console.WriteLine($"PASS: {count} launcher/settings integration assertions.");
 }
 finally
 {
-    Environment.SetEnvironmentVariable("JACINTO_SETTINGS_TRANSACTION_ROOT",null); Environment.SetEnvironmentVariable("JACINTO_SETTINGS_DOCUMENTS",null); Environment.SetEnvironmentVariable("JACINTO_SETTINGS_SCRIPT",null);
+    Environment.SetEnvironmentVariable("JACINTO_SETTINGS_TRANSACTION_ROOT",null); Environment.SetEnvironmentVariable("JACINTO_SETTINGS_DOCUMENTS",null);
     try { Directory.Delete(temp,true); } catch { }
 }
 

@@ -1,0 +1,57 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:JacintoLauncher" x:Class="JacintoLauncher.ControlsView">
+  <Panel>
+    <Grid RowDefinitions="Auto,*,Auto">
+      <StackPanel Margin="32,16,32,12">
+        <StackPanel x:Name="InputPanel" Margin="0,0,0,14">
+          <Grid ColumnDefinitions="240,*"><TextBlock Text="I play with" Classes="label"/><ComboBox x:Name="InputBox" Grid.Column="1" AutomationProperties.Name="I play with"><ComboBoxItem Content="Keyboard and mouse"/><ComboBoxItem Content="Gamepad"/></ComboBox></Grid>
+          <TextBlock x:Name="InputNote" Classes="muted" Margin="0,6,0,0"/>
+        </StackPanel>
+        <UniformGrid Rows="1">
+          <ToggleButton x:Name="KeyboardTab" Classes="nav" Margin="0,0,6,0" HorizontalContentAlignment="Center" AutomationProperties.Name="Keyboard and mouse tab" IsChecked="True" Click="Tab_Click"><TextBlock Text="Keyboard &amp; Mouse"/></ToggleButton>
+          <ToggleButton x:Name="GamepadTab" Classes="nav" HorizontalContentAlignment="Center" AutomationProperties.Name="Gamepad tab" Click="Tab_Click"><TextBlock Text="Gamepad"/></ToggleButton>
+        </UniformGrid>
+        <Grid x:Name="SensitivityRow" ColumnDefinitions="180,*,64" Margin="0,14,0,0">
+          <TextBlock Text="Mouse Sensitivity" Classes="label"/>
+          <Slider x:Name="SensitivitySlider" Grid.Column="1" Minimum="1" Maximum="200" Value="60" TickFrequency="1" IsSnapToTickEnabled="True"/>
+          <TextBlock x:Name="SensitivityValue" Grid.Column="2" TextAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/>
+        </Grid>
+      </StackPanel>
+      <Border x:Name="KeyboardCard" Grid.Row="1" Classes="card" Margin="32,0,32,16" Padding="6">
+        <ListBox x:Name="BindingsList" SelectionMode="Single" DoubleTapped="List_DoubleTapped">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="local:ControlBindingRow">
+              <Grid ColumnDefinitions="*,220">
+                <TextBlock Text="{Binding Action}" VerticalAlignment="Center"/>
+                <Border Grid.Column="1" Classes="keycap"><TextBlock Text="{Binding Key}" FontWeight="SemiBold"/></Border>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Border>
+      <Border x:Name="GamepadCard" Grid.Row="1" Classes="card" Margin="32,0,32,16" Padding="14" IsVisible="False">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Bottom" Text="The default gamepad layout. It cannot be changed here." Classes="muted" TextAlignment="Center" Margin="0,8,0,0"/>
+          <ContentControl x:Name="DiagramHost"/>
+        </DockPanel>
+      </Border>
+      <Border Grid.Row="2" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Padding="32,14">
+        <DockPanel>
+          <StackPanel x:Name="KeyboardButtons" Orientation="Horizontal" DockPanel.Dock="Right" Spacing="10" Margin="16,0,0,0">
+            <Button Content="Change key" Click="Change_Click"/>
+            <Button Content="Restore defaults" Click="Defaults_Click"/>
+            <Button x:Name="RollbackButton" Content="Rollback controls" IsEnabled="False" Click="Rollback_Click"/>
+            <Button x:Name="ApplyButton" Content="Apply" Classes="primary" Click="Apply_Click"/>
+          </StackPanel>
+          <TextBlock x:Name="StatusText" Classes="status" VerticalAlignment="Center"/>
+        </DockPanel>
+      </Border>
+    </Grid>
+    <!-- Key capture takes over the page: mouse buttons and the wheel are valid bindings too. -->
+    <Border x:Name="CaptureOverlay" Classes="overlay" Background="#D8000000" IsVisible="False" Focusable="True">
+      <Border Classes="card" BorderBrush="{DynamicResource AccentBrush}" Width="440" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28">
+        <TextBlock x:Name="CaptureText" TextAlignment="Center" TextWrapping="Wrap" FontSize="15"/>
+      </Border>
+    </Border>
+  </Panel>
+</UserControl>

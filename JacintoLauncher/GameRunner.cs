@@ -17,7 +17,7 @@ internal static class GameRunner
     internal sealed record Layer(string Kind, string Path);
 
     private static string Home => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-    private static string DefaultPrefix => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GOW3JacintoLauncher", "prefix");
+    private static string DefaultPrefix => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.Create), "GOW3JacintoLauncher", "prefix");
     private static string Prefix(LauncherConfig config) => string.IsNullOrWhiteSpace(config.WinePrefix) ? DefaultPrefix : config.WinePrefix;
 
     internal static bool NeedsCompatibilityLayer => !OperatingSystem.IsWindows();
@@ -67,20 +67,97 @@ internal static class GameRunner
         return false;
     }
 
-    internal static string? MissingDirectX(string gameDir)
+    private static readonly string[] DirectXFiles = { "D3DCOMPILER_43.dll", "d3dx9_43.dll" };
+    private const string DirectXDownload = "https://www.microsoft.com/en-us/download/details.aspx?id=35";
+
+    internal static string? MissingDirectX(string gameDir, LauncherConfig? config = null)
     {
-        if (!OperatingSystem.IsWindows() || InsideWine) return null;
-        var system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        if (InsideWine) return null;
+        string system;
+        if (OperatingSystem.IsWindows()) system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        else
+        {
+            config ??= new LauncherConfig();
+            var layer = FindLayer(config);
+            if (layer is null) return null;
+            system = Path.Combine(Prefix(config), layer.Kind == "wine" ? "" : "pfx", "drive_c", "windows", "system32");
+            if (!Directory.Exists(system)) return null; // The prefix is created by the first start; nothing can be said yet.
+        }
         var binaries = Path.Combine(gameDir, "Binaries", "Win64");
-        var missing = new[] { "D3DCOMPILER_43.dll", "d3dx9_43.dll" }.Where(n => !File.Exists(Path.Combine(system, n)) && !File.Exists(Path.Combine(binaries, n))).ToArray();
+        var missing = DirectXFiles.Where(n => !Exists(system, n) && !Exists(binaries, n)).ToArray();
         return missing.Length == 0 ? null : string.Join(", ", missing);
+    }
+
+    private static bool Exists(string directory, string name) =>
+        File.Exists(Path.Combine(directory, name)) || (!OperatingSystem.IsWindows() && Directory.Exists(directory) && Directory.EnumerateFiles(directory).Any(f => Path.GetFileName(f).Equals(name, StringComparison.OrdinalIgnoreCase)));
+
+    /// <summary>
+    /// Windows opens Microsoft's DirectX June 2010 page (a third-party installer is never run silently).
+    /// Linux and macOS install the two files into the game's prefix with winetricks. Returns false when winetricks is missing.
+    /// </summary>
+    internal static bool InstallDirectX(LauncherConfig config)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Process.Start(new ProcessStartInfo(DirectXDownload) { UseShellExecute = true })?.Dispose();
+            return true;
+        }
+        var path = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+        var layer = FindLayer(config);
+        var winetricks = path.Select(dir => Path.Combine(dir, "winetricks")).FirstOrDefault(File.Exists);
+        ProcessStartInfo start;
+        if (layer?.Kind == "umu")
+        {
+            start = new ProcessStartInfo(layer.Path) { UseShellExecute = false };
+            start.Environment["GAMEID"] = "umu-0"; start.Environment["PROTONPATH"] = "GE-Proton";
+            start.ArgumentList.Add("winetricks");
+        }
+        else
+        {
+            if (winetricks is null) return false;
+            start = new ProcessStartInfo(winetricks) { UseShellExecute = false };
+            // Proton keeps its wine next to the "proton" script, under files/ on current versions and dist/ on older ones.
+            if (layer?.Kind == "proton")
+                foreach (var folder in new[] { "files", "dist" })
+                {
+                    var wine = Path.Combine(Path.GetDirectoryName(layer.Path)!, folder, "bin", "wine");
+                    if (File.Exists(wine)) { start.Environment["WINE"] = wine; break; }
+                }
+            else if (layer is not null) start.Environment["WINE"] = layer.Path;
+        }
+        start.Environment["WINEPREFIX"] = layer?.Kind == "wine" ? Prefix(config) : Path.Combine(Prefix(config), "pfx");
+        foreach (var argument in new[] { "-q", "d3dcompiler_43", "d3dx9_43" }) start.ArgumentList.Add(argument);
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("winetricks did not start.");
+        process.WaitForExit();
+        if (process.ExitCode != 0) throw new InvalidOperationException("winetricks exited with " + process.ExitCode + ".");
+        return true;
+    }
+
+    /// <summary>
+    /// A copy of GearGame.exe under another name. Discord matches on the file name alone and lists "geargame.exe" as Gears of War 4.
+    /// Refreshed whenever the original changes, for example after a repair.
+    /// </summary>
+    internal static string GameExecutable(string gameDir, bool create = true)
+    {
+        var binaries = Path.Combine(Path.GetFullPath(gameDir), "Binaries", "Win64");
+        var copy = Path.Combine(binaries, "GearsOfWar3.exe");
+        if (!create) return copy;
+        var original = new FileInfo(Path.Combine(binaries, "GearGame.exe"));
+        var current = new FileInfo(copy);
+        if (!current.Exists || current.Length != original.Length || current.LastWriteTimeUtc != original.LastWriteTimeUtc) original.CopyTo(copy, true);
+        return copy;
     }
 
     internal static ProcessStartInfo BuildStart(string gameDir, string arguments, string mode, LauncherConfig config, Layer? layer)
     {
         var binaries = Path.Combine(Path.GetFullPath(gameDir), "Binaries", "Win64");
-        var exe = Path.Combine(binaries, "GearGame.exe");
-        if (!NeedsCompatibilityLayer) return new ProcessStartInfo(exe, arguments) { UseShellExecute = false, WorkingDirectory = binaries };
+        var exe = GameExecutable(gameDir);
+        if (!NeedsCompatibilityLayer)
+        {
+            var direct = new ProcessStartInfo(exe, arguments) { UseShellExecute = false, WorkingDirectory = binaries };
+            direct.Environment["DXVK_LOG_LEVEL"] = "none"; // Otherwise it writes logs beside the game.
+            return direct;
+        }
         if (layer is null) throw new InvalidOperationException("No Windows compatibility layer was found (umu-run, Proton or Wine). Install one, or set it in Settings.");
         var prefix = Prefix(config);
         Directory.CreateDirectory(prefix);

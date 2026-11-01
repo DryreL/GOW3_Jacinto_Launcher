@@ -2,6 +2,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 
 namespace JacintoLauncher;
 
@@ -12,9 +13,26 @@ namespace JacintoLauncher;
 internal static class LauncherDiagnostics
 {
     private static readonly object Sync = new();
-    internal static string DirectoryPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "GOW3JacintoLauncher", "logs");
+    internal static string DirectoryPath => Environment.GetEnvironmentVariable("JACINTO_LOG_DIR") ?? (resolved ??= Resolve());
+    private static string? resolved;
+
+    // Beside the launcher, where a player can find them; a folder the launcher cannot write to falls back to the user's own.
+    private static string Resolve()
+    {
+        var beside = Path.Combine(AppContext.BaseDirectory, "logs");
+        try
+        {
+            Directory.CreateDirectory(beside);
+            var probe = Path.Combine(beside, ".write-test");
+            File.WriteAllText(probe, "");
+            File.Delete(probe);
+            return beside;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.Create), "GOW3JacintoLauncher", "logs");
+        }
+    }
 
     /// <summary>Set by Telemetry; stays null in headless use and in the self-tests.</summary>
     internal static Action<string, Exception>? ErrorReported;
@@ -25,6 +43,8 @@ internal static class LauncherDiagnostics
         Write("ERROR", operation + Environment.NewLine + exception);
         ErrorReported?.Invoke(operation, exception);
     }
+
+    internal static string? LatestLog() => Directory.Exists(DirectoryPath) ? new DirectoryInfo(DirectoryPath).EnumerateFiles("*.log").OrderBy(f => f.LastWriteTimeUtc).LastOrDefault()?.FullName : null;
 
     internal static void OpenFolder() { Directory.CreateDirectory(DirectoryPath); Open(DirectoryPath); }
 

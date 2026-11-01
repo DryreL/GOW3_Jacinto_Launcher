@@ -18,12 +18,27 @@ public class LauncherConfig
 	public string? SteamInstallDirOverride { get; set; }
 	public string PreferredConfigurationMode { get; set; } = "Offline";
 
+	// The patch data skips the intro; the installer turns it back on unless this is set.
 	public bool SkipIntro { get; set; }
+	public bool SidebarCollapsed { get; set; }
+	public bool HideSetupGuide { get; set; }
 
 	public bool BackupSaveOnLaunch { get; set; } = true;
 
 	// Launcher interface language (L.Languages code); empty = Windows display language. Does not change the game.
 	public string? LauncherLanguage { get; set; }
+
+	// LauncherTheme.Options id.
+	public string Theme { get; set; } = "blue";
+
+	// auto (follows the system), light or dark.
+	public string ThemeMode { get; set; } = "auto";
+
+	// The pre-launch warning about movies over 4 GB (HD Movies Pack).
+	public bool HideHdMoviesWarning { get; set; }
+
+	// Game crash logs and dumps up to this time were already looked at; null = first run, older crashes are not sent.
+	public System.DateTime? GameCrashCheckedUtc { get; set; }
 
 	// Anonymous crash reports (Sentry) and usage events (Aptabase). The notice is shown once.
 	public bool TelemetryEnabled { get; set; } = true;
@@ -53,6 +68,19 @@ public class LauncherConfig
 		{
 		}
 		return new LauncherConfig();
+	}
+
+	internal static string FilePath(string exeDir) => PathOf(exeDir);
+
+	/// <summary>Takes the values of a file changed outside the launcher. True when any value is new; the launcher's own saves change nothing. A file that does not parse throws and leaves every value as it was.</summary>
+	public bool Reload(string exeDir)
+	{
+		string path = PathOf(exeDir);
+		if (!File.Exists(path)) return false;
+		LauncherConfig? fresh = JsonSerializer.Deserialize<LauncherConfig>(File.ReadAllText(path));
+		if (fresh is null || JsonSerializer.Serialize(fresh) == JsonSerializer.Serialize(this)) return false;
+		foreach (var property in typeof(LauncherConfig).GetProperties()) property.SetValue(this, property.GetValue(fresh));
+		return true;
 	}
 
 	public void Save(string exeDir)

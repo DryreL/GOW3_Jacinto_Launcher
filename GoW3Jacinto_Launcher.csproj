@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="keys.local.props" Condition="Exists('keys.local.props')" />
   <PropertyGroup>
     <AssemblyName>GoW3Jacinto_Launcher</AssemblyName>
     <RootNamespace>JacintoLauncher</RootNamespace>
@@ -9,39 +10,55 @@
     <ApplicationIcon>app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- ICU is not guaranteed on Linux (it crashes .NET at startup when missing); L reads LANG instead. -->
+    <InvariantGlobalization Condition="$(RuntimeIdentifier.StartsWith('linux'))">true</InvariantGlobalization>
     <Deterministic>true</Deterministic>
-    <!-- The folder publish is deliberate: a single-file bundle unpacks native
-         libraries to %TEMP% at startup, which antivirus heuristics dislike. -->
+    <!-- One portable executable. The three native graphics libraries unpack to %TEMP%\.net on first start;
+         set IncludeNativeLibrariesForSelfExtract to false if antivirus engines object, and ship them beside the exe. -->
     <SelfContained>true</SelfContained>
-    <PublishSingleFile>false</PublishSingleFile>
-    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- Measured on Windows: 174 MB becomes 69 MB and the window opens 90 ms later (760 ms against 670 ms).
+         Partial trimming removes unused framework code only. The JSON and COM features this code uses are kept on. -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+    <!-- Not on macOS: on Apple Silicon a package built on Windows with it crashes in HTTP code (AccessViolationException). -->
+    <PublishReadyToRun Condition="!$(RuntimeIdentifier.StartsWith('osx'))">true</PublishReadyToRun>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <!-- File metadata: unidentified binaries score worse with antivirus heuristics. -->
-    <Version>0.4.0</Version>
+    <Version>0.3.8</Version>
     <Company>Project Jacinto Community</Company>
     <Product>Gears of War 3 Jacinto Launcher</Product>
     <AssemblyTitle>Gears of War 3 Jacinto Launcher</AssemblyTitle>
     <Description>Game launcher and settings manager for Gears of War 3: Jacinto.</Description>
     <Copyright>Refresh, DryreL and the Project Jacinto community</Copyright>
-    <!-- Paste the values here, or set them as environment variables / CI secrets.
+    <!-- From keys.local.props (not committed), or environment variables / CI secrets.
          Empty values turn the matching service off. -->
     <JacintoSentryDsn Condition="'$(JacintoSentryDsn)' == ''"></JacintoSentryDsn>
     <JacintoAptabaseKey Condition="'$(JacintoAptabaseKey)' == ''"></JacintoAptabaseKey>
+    <JacintoPresenceUrl Condition="'$(JacintoPresenceUrl)' == ''">https://presence.dryrel.com/online</JacintoPresenceUrl>
   </PropertyGroup>
   <ItemGroup>
     <AssemblyMetadata Include="SentryDsn" Value="$(JacintoSentryDsn)" />
     <AssemblyMetadata Include="AptabaseKey" Value="$(JacintoAptabaseKey)" />
-    <InternalsVisibleTo Include="LauncherSelfTests" />
+    <AssemblyMetadata Include="PresenceUrl" Value="$(JacintoPresenceUrl)" />
   </ItemGroup>
   <ItemGroup>
     <!-- The self-test is a separate executable; the old WPF sources are kept for reference only. -->
-    <Compile Remove="tests\**\*.cs;legacy-wpf\**\*;bin\**\*;obj\**\*;dist\**\*" />
-    <AvaloniaXaml Remove="legacy-wpf\**\*;dist\**\*" />
-    <None Remove="tests\**\*;legacy-wpf\**\*;dist\**\*" />
-    <EmbeddedResource Remove="tests\**\*;legacy-wpf\**\*;dist\**\*" />
+    <Compile Remove="multipatch\**\*;tests\**\*.cs;legacy-wpf\**\*;bin\**\*;obj\**\*;dist\**\*;patch-data\**\*" />
+    <AvaloniaXaml Remove="multipatch\**\*;legacy-wpf\**\*;dist\**\*" />
+    <None Remove="multipatch\**\*;tests\**\*;legacy-wpf\**\*;dist\**\*" />
+    <EmbeddedResource Remove="multipatch\**\*;tests\**\*;legacy-wpf\**\*;dist\**\*" />
     <AvaloniaResource Include="assets\**" />
     <AvaloniaResource Include="app.ico" />
+    <AvaloniaResource Include="changelog.txt" />
+    <EmbeddedResource Include="languages.csv" LogicalName="languages.csv" />
+    <!-- Player packages only (tools\Build-Package.ps1). The data comes from the game, so it is not in the repository. -->
+    <EmbeddedResource Include="patch-data\multipatch.jcpatch" LogicalName="multipatch.jcpatch" Condition="'$(JacintoEmbedPatch)' == 'true'" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.4" />
@@ -50,4 +67,9 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
     <PackageReference Include="Sentry" Version="6.12.1" />
   </ItemGroup>
+  <!-- SkiaSharp and HarfBuzz ship 100 MB of native debug symbols that users never need. -->
+  <Target Name="RemovePublishedSymbols" AfterTargets="Publish">
+    <ItemGroup><PublishedSymbols Include="$(PublishDir)*.pdb" /></ItemGroup>
+    <Delete Files="@(PublishedSymbols)" />
+  </Target>
 </Project>

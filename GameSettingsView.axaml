@@ -1,0 +1,70 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="JacintoLauncher.GameSettingsView">
+  <Grid RowDefinitions="*,Auto">
+    <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto">
+     <StackPanel>
+      <StackPanel x:Name="Form" Margin="32,16,32,0">
+        <TextBlock x:Name="SectionNote" Text="Restart the game after applying." Classes="muted" Margin="0,4,0,20"/>
+
+        <Border x:Name="DisplayCard" Classes="card"><StackPanel>
+          <TextBlock Text="DISPLAY" Classes="h2"/>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Resolution" Classes="label"/><ComboBox x:Name="ResolutionBox" Grid.Column="1"/></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Display mode" Classes="label"/><ComboBox x:Name="DisplayModeBox" Grid.Column="1"><ComboBoxItem Content="Fullscreen"/><ComboBoxItem Content="Windowed"/><ComboBoxItem x:Name="BorderlessItem" Content="Borderless window" ToolTip.ShowOnDisabled="True"/></ComboBox></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Frame rate limit" Classes="label"/><ComboBox x:Name="FpsBox" Grid.Column="1" IsEditable="True"><ComboBoxItem Content="Default"/><ComboBoxItem Content="30"/><ComboBoxItem Content="60"/><ComboBoxItem Content="75"/><ComboBoxItem Content="90"/><ComboBoxItem Content="120"/><ComboBoxItem Content="144"/><ComboBoxItem Content="165"/><ComboBoxItem Content="240"/></ComboBox></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Fullscreen refresh rate" Classes="label"/><ComboBox x:Name="RefreshBox" Grid.Column="1" IsEditable="True"><ComboBoxItem Content="Default"/><ComboBoxItem Content="60"/><ComboBoxItem Content="75"/><ComboBoxItem Content="120"/><ComboBoxItem Content="144"/><ComboBoxItem Content="165"/><ComboBoxItem Content="240"/></ComboBox></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*">
+            <TextBlock Text="Field of view" Classes="label"/>
+            <Grid Grid.Column="1" ColumnDefinitions="*,48,Auto">
+              <Slider x:Name="FovSlider" Minimum="50" Maximum="130" Value="80" TickFrequency="1" IsSnapToTickEnabled="True"/>
+              <TextBlock x:Name="FovValue" Grid.Column="1" TextAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,14,0"/>
+              <CheckBox x:Name="FovAutoCheck" Grid.Column="2" Content="Automatic"/>
+            </Grid>
+          </Grid>
+          <Grid x:Name="SubtitleRow" Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Subtitle size" Classes="label"/><ComboBox x:Name="SubtitleBox" Grid.Column="1" AutomationProperties.Name="Subtitle size"><ComboBoxItem Content="Big (recommended for PC)"/><ComboBoxItem Content="Normal (handhelds)"/><ComboBoxItem Content="Original game font"/></ComboBox></Grid>
+          <UniformGrid Columns="2"><CheckBox x:Name="VsyncCheck" Content="Vertical sync (VSync)"/><CheckBox x:Name="FovAllModesCheck" Content="Apply FOV to every camera mode"/></UniformGrid>
+          <StackPanel x:Name="HudPanel" Margin="0,8,0,0">
+            <CheckBox x:Name="HudCheck" Content="HUD scaling (recommended)" Click="Hud_Click"/>
+            <TextBlock Text="The HUD is drawn in fixed pixels for 720p. With scaling on, it keeps its size relative to the screen; off, it gets smaller as the resolution goes up." Classes="muted"/>
+          </StackPanel>
+          <StackPanel x:Name="DxvkPanel" Margin="0,8,0,0">
+            <CheckBox x:Name="DxvkCheck" Content="Vulkan renderer (DXVK)" Click="Dxvk_Click"/>
+            <TextBlock x:Name="DxvkText" Text="Runs the game's DirectX 9 through Vulkan, for modern graphics cards. Adds one file beside the game. The first minutes can stutter while shaders are prepared." Classes="muted"/>
+          </StackPanel>
+        </StackPanel></Border>
+
+        <Border x:Name="GraphicsCard" Classes="card"><StackPanel>
+          <TextBlock Text="GRAPHICS" Classes="h2"/>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Anti-aliasing" Classes="label"/><ComboBox x:Name="AaBox" Grid.Column="1"><ComboBoxItem Content="Off"/><ComboBoxItem Content="FXAA / Temporal AA"/><ComboBoxItem Content="MSAA 2x"/><ComboBoxItem Content="MSAA 4x"/></ComboBox></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Anisotropic filtering" Classes="label"/><ComboBox x:Name="AnisotropyBox" Grid.Column="1"><ComboBoxItem Content="1x"/><ComboBoxItem Content="2x"/><ComboBoxItem Content="4x"/><ComboBoxItem Content="8x"/><ComboBoxItem Content="16x"/></ComboBox></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Graphics detail" Classes="label"/><ComboBox x:Name="GraphicsQualityBox" Grid.Column="1"><ComboBoxItem Content="Low"/><ComboBoxItem Content="Medium"/><ComboBoxItem Content="High"/><ComboBoxItem Content="Ultra"/></ComboBox></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Shadows" Classes="label"/><ComboBox x:Name="ShadowQualityBox" Grid.Column="1"><ComboBoxItem Content="Low"/><ComboBoxItem Content="Medium"/><ComboBoxItem Content="High"/><ComboBoxItem Content="Ultra"/></ComboBox></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Textures" Classes="label"/><ComboBox x:Name="TextureQualityBox" Grid.Column="1"><ComboBoxItem Content="Low"/><ComboBoxItem Content="Medium"/><ComboBoxItem Content="High"/><ComboBoxItem Content="Ultra"/></ComboBox></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Foliage" Classes="label"/><ComboBox x:Name="FoliageQualityBox" Grid.Column="1"><ComboBoxItem Content="Low"/><ComboBoxItem Content="Medium"/><ComboBoxItem Content="High"/><ComboBoxItem Content="Ultra"/></ComboBox></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Game storage drive" Classes="label"/><ComboBox x:Name="DriveTypeBox" Grid.Column="1"><ComboBoxItem Content="SSD / NVMe"/><ComboBoxItem Content="HDD"/></ComboBox></Grid>
+          <UniformGrid Columns="2" Margin="0,6,0,0"><CheckBox x:Name="AmbientOcclusionCheck" Content="Ambient occlusion"/><CheckBox x:Name="MotionBlurCheck" Content="Motion blur"/><CheckBox x:Name="DepthOfFieldCheck" Content="Depth of field"/><CheckBox x:Name="BloomCheck" Content="Bloom"/><CheckBox x:Name="LensFlaresCheck" Content="Lens flares"/><CheckBox x:Name="LightShaftsCheck" Content="Light shafts"/><CheckBox x:Name="DistortionCheck" Content="Distortion"/><CheckBox x:Name="RadialBlurCheck" Content="Radial blur"/><CheckBox x:Name="SubsurfaceCheck" Content="Subsurface scattering"/><CheckBox x:Name="SeparateTranslucencyCheck" Content="Separate translucency"/></UniformGrid>
+        </StackPanel></Border>
+
+        <Border x:Name="AudioCard" Classes="card"><StackPanel>
+          <TextBlock Text="AUDIO" Classes="h2"/>
+          <Grid Classes="row" ColumnDefinitions="240,*,56"><TextBlock Text="Music volume" Classes="label"/><Slider x:Name="MusicSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="Music volume"/><TextBlock Grid.Column="2" Text="{Binding #MusicSlider.Value, StringFormat={}{0:0}%}" x:CompileBindings="False" TextAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*,56"><TextBlock Text="Effects volume" Classes="label"/><Slider x:Name="EffectsSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="Effects volume"/><TextBlock Grid.Column="2" Text="{Binding #EffectsSlider.Value, StringFormat={}{0:0}%}" x:CompileBindings="False" TextAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*,56"><TextBlock Text="Dialogue volume" Classes="label"/><Slider x:Name="DialogueSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="Dialogue volume"/><TextBlock Grid.Column="2" Text="{Binding #DialogueSlider.Value, StringFormat={}{0:0}%}" x:CompileBindings="False" TextAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/></Grid>
+          <TextBlock Text="These work on top of the volume sliders in the game's own Options menu." Classes="muted" Margin="0,0,0,12"/>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Audio channels" Classes="label"/><ComboBox x:Name="AudioChannelsBox" Grid.Column="1"><ComboBoxItem Content="32 (original)"/><ComboBoxItem Content="64 (fewer sounds cut off in big fights)"/><ComboBoxItem Content="128"/></ComboBox></Grid>
+          <CheckBox x:Name="AudioFilterCheck" Content="Audio filter (muffled sound behind walls / under water)" ToolTip.Tip="Turn off if sound randomly becomes muffled, underwater or far away."/>
+        </StackPanel></Border>
+      </StackPanel>
+      <ContentControl x:Name="LauncherSettings" Margin="32,0,32,12"/>
+     </StackPanel>
+    </ScrollViewer>
+    <Border Grid.Row="1" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Padding="32,14">
+      <DockPanel>
+        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" Spacing="10" Margin="16,0,0,0">
+          <Button x:Name="RollbackButton" Content="Rollback last graphics change" IsEnabled="False" Click="Rollback_Click"/>
+          <Button x:Name="ApplyButton" Content="Apply settings" Classes="primary" Click="Apply_Click"/>
+        </StackPanel>
+        <TextBlock x:Name="StatusText" Classes="status" VerticalAlignment="Center"/>
+      </DockPanel>
+    </Border>
+  </Grid>
+</UserControl>
