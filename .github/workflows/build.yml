@@ -97,6 +97,7 @@ jobs:
         run: bash tools/Sign-macOS.sh publish/${{ matrix.rid }}
       - name: Attest provenance
         if: startsWith(github.ref, 'refs/tags/')
+        continue-on-error: true   # Sigstore sometimes fails ("error creating signing certificate"); provenance is extra, it must not stop a release
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: publish/${{ matrix.rid }}/GoW3Jacinto_*
