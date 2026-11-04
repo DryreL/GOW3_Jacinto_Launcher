@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -99,5 +100,75 @@ internal sealed class SettingsPage : UserControl
         form ??= new GameSettingsView(gameDir, launcherSettings());
         host.Content = form;
         form.ShowSection(section);
+    }
+}
+
+/// <summary>Shows which options differ from what is saved: a star after the name, in the theme colour.</summary>
+internal sealed class ChangeMarks
+{
+    private readonly List<(Control Value, Control Label)> items = new();
+    private readonly Dictionary<Control, string> english = new();
+    private readonly HashSet<Control> marked = new();
+    private string?[] saved = Array.Empty<string?>();
+    private bool paused;
+    internal event Action? Changed;
+    internal bool Dirty => marked.Count != 0;
+
+    internal void Add(Control value, Control? label = null)
+    {
+        label ??= value is CheckBox ? value : RowLabel(value);
+        items.Add((value, label));
+        english.TryAdd(label, L.EnglishOf(Text(label)) ?? Text(label));
+        value.PropertyChanged += (_, change) => { if (change.Property.Name is "SelectedIndex" or "SelectedItem" or "Text" or "IsChecked" or "Value") Update(); };
+    }
+
+    /// <summary>Runs a change to many options, then marks once.</summary>
+    internal void Batch(Action fill)
+    {
+        paused = true;
+        try { fill(); } finally { paused = false; }
+        Update();
+    }
+
+    /// <summary>What the options show now is what is saved.</summary>
+    internal void Capture()
+    {
+        saved = items.Select(item => Read(item.Value)).ToArray();
+        Update();
+    }
+
+    internal void Update()
+    {
+        if (paused || saved.Length != items.Count) return;
+        var now = items.Where((item, index) => Read(item.Value) != saved[index]).Select(item => item.Label).ToHashSet();
+        foreach (var label in english.Keys)
+        {
+            var dirty = now.Contains(label);
+            if (dirty == marked.Contains(label)) continue;
+            if (dirty) marked.Add(label); else marked.Remove(label);
+            var text = L.T(english[label]) + (dirty ? " *" : "");
+            if (label is TextBlock block) block.Text = text; else ((ContentControl)label).Content = text;
+            label.Classes.Set("changed", dirty);
+        }
+        Changed?.Invoke();
+    }
+
+    private static string? Read(Control value) => value switch
+    {
+        ComboBox { IsEditable: true } box => box.Text,
+        ComboBox box => box.SelectedItem is string text ? text : box.SelectedIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        ToggleButton toggle => toggle.IsChecked?.ToString(),
+        TextBox box => box.Text,
+        Slider slider => slider.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        _ => null
+    };
+
+    private static string Text(Control label) => label is TextBlock block ? block.Text ?? "" : ((ContentControl)label).Content as string ?? "";
+
+    private static Control RowLabel(Control value)
+    {
+        for (var at = value.Parent; at is not null; at = at.Parent)
+            if (at is Grid grid && grid.Classes.Contains("row")) return grid.Children.OfType<TextBlock>().First();
+        throw new InvalidOperationException("No settings row around " + value.Name);
     }
 }

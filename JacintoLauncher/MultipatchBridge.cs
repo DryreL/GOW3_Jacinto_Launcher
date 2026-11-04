@@ -65,6 +65,7 @@ internal static class MultipatchBridge
 
     internal static JsonObject LoadSettingsFromMultipatch(string gameDir) => Logged("GetGraphics", () => Engine(gameDir).GetGraphics());
     internal static JsonObject LoadControlsFromMultipatch(string gameDir) => Logged("GetControls", () => Engine(gameDir).GetControls());
+    internal static JsonArray ControlProblems(string gameDir) => Engine(gameDir).ControlProblems();
     internal static JsonObject ApplyGraphicsThroughMultipatch(string gameDir, JsonObject request) => Logged("ApplyGraphics", () => Engine(gameDir).ApplyGraphics(request));
     internal static JsonObject ApplyControlsThroughMultipatch(string gameDir, JsonObject bindings, string? sensitivity = null) => Logged("ApplyControls", () => Engine(gameDir).ApplyControls(bindings, sensitivity));
     internal static JsonObject RollbackSettingsThroughMultipatch(string gameDir, string? transactionId = null) => Logged("RollbackGraphics", () => Engine(gameDir).Rollback(transactionId, "Graphics"));
@@ -128,7 +129,7 @@ internal static class MultipatchBridge
     /// <summary>Makes the saves match a backup. Nothing is touched until the backup verifies, and the current saves are backed up first.</summary>
     internal static void RestoreSaves(string gameDir, string backupDirectory, string? backupRoot = null)
     {
-        if (GameLayout.GameRunning()) throw new InvalidOperationException("Close the game before restoring saves.");
+        if (GameLayout.GameRunning()) throw new UserActionException("Close the game before restoring saves.");
         var checkpoints = Path.GetFullPath(Path.Combine(gameDir, "GearGame", "SaveData"));
         var profile = Path.GetFullPath(Path.Combine(gameDir, "Binaries", "GearGame", "SaveData"));
         var manifest = JsonNode.Parse(File.ReadAllText(Path.Combine(backupDirectory, "manifest.json")))!;
@@ -146,10 +147,11 @@ internal static class MultipatchBridge
         var wanted = new HashSet<string>(plan.Select(p => p.Target), StringComparer.OrdinalIgnoreCase);
         foreach (var folder in new[] { checkpoints, profile }.Where(Directory.Exists))
             foreach (var file in Directory.GetFiles(folder, "*", SearchOption.AllDirectories))
-                if (!wanted.Contains(file)) File.Delete(file);
+                if (!wanted.Contains(file)) { File.SetAttributes(file, FileAttributes.Normal); File.Delete(file); }
         foreach (var (source, target) in plan)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            if (File.Exists(target)) File.SetAttributes(target, FileAttributes.Normal);
             File.Copy(source, target, true);
         }
     }
@@ -163,7 +165,7 @@ internal static class MultipatchBridge
         var root = Path.GetFullPath(gameDir);
         var executable = Path.Combine(root, "Binaries", "Win64", "GearGame.exe");
         if (!File.Exists(executable)) throw new FileNotFoundException("GearGame.exe not found.", executable);
-        var script = GameLayout.StartScript(root) ?? throw new FileNotFoundException("Multipatch launch script not found.", Path.Combine(root, "Gears3_Start_Game.bat"));
+        var script = GameLayout.StartScript(root) ?? throw new UserActionException("Gears3_Start_Game.bat is missing from the game folder. Install the Multipatch on the Home screen.");
         if (GameLayout.ToolFilesDir(root) is null) throw new DirectoryNotFoundException("Multipatch data (graphics.json) was not found in tools\\multipatch\\_files or Gears3_Multipatch_Tool\\_files.");
         if (mode == NetworkMode.Steam && requireSteamClient && !GameRunner.IsSteamClientRunning()) throw new InvalidOperationException("Steam is not running.");
         NetworkMode.Validate(root, mode);
@@ -195,14 +197,39 @@ internal static class MultipatchBridge
         var start = GameRunner.BuildStart(gameDir, arguments, mode, config, layer);
         NetworkMode.Apply(gameDir, mode);
         ApplyHdCaps(gameDir);
+        TurnOffTemporalAA(gameDir);
+        LimitAudioChannelsForVulkan(gameDir);
+        MultipatchInstaller.ShareHudGuid(gameDir);
         PlayerIdentity.Apply(gameDir, config.PlayerName, GameRunner.DocumentsRoot(config));
         if (backupSaves && (Directory.Exists(Path.Combine(gameDir, "GearGame", "SaveData")) || Directory.Exists(Path.Combine(gameDir, "Binaries", "GearGame", "SaveData"))))
             LauncherDiagnostics.Info("Pre-launch " + BackupAllSaves(gameDir));
-        using var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("GearGame.exe did not start.");
+        System.Diagnostics.Process process;
+        try { process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("GearGame.exe did not start."); }
+        catch (System.ComponentModel.Win32Exception exception) when (exception.NativeErrorCode == 740)
+        {
+            throw new UserActionException("Windows wants administrator rights for the game, usually because \"Run this program as an administrator\" is ticked in the Compatibility tab of GearGame.exe or GearsOfWar3.exe. Untick it, or start the launcher as administrator.");
+        }
+        using var _ = process;
         LauncherDiagnostics.Info($"GearGame.exe started in {mode} mode (pid {process.Id}, {layer?.Kind ?? "direct"}) with: {arguments}");
         DiscordPresence.Start(process.Id);
         var files = GameLayout.ToolFilesDir(gameDir);
         if (files is not null && JsonNode.Parse(File.ReadAllText(Path.Combine(files, "graphics.json")))?["Borderless"]?.GetValue<bool>() == true) BorderlessWindow.Watch(process.Id);
+    }
+
+    // Older versions offered it, and it stops the game at the first reflection probe.
+    internal static void TurnOffTemporalAA(string gameDir)
+    {
+        var graphics = GameLayout.ToolFilesDir(gameDir) is { } files ? Path.Combine(files, "graphics.json") : null;
+        if (graphics is not null && string.Equals(JsonNode.Parse(File.ReadAllText(graphics))?["AntiAliasing"]?.GetValue<string>(), "fxaa", StringComparison.OrdinalIgnoreCase))
+            ApplyGraphicsThroughMultipatch(gameDir, new JsonObject { ["AntiAliasing"] = "off" });
+    }
+
+    // 64 and 128 audio channels do not work through the Vulkan renderer; Settings locks them while it is on.
+    internal static void LimitAudioChannelsForVulkan(string gameDir)
+    {
+        var graphics = GameLayout.ToolFilesDir(gameDir) is { } files ? Path.Combine(files, "graphics.json") : null;
+        if (graphics is not null && Dxvk.Installed(gameDir) && JsonNode.Parse(File.ReadAllText(graphics))?["AudioChannels"] is JsonValue channels && channels.TryGetValue<int>(out var count) && count > 32)
+            ApplyGraphicsThroughMultipatch(gameDir, new JsonObject { ["AudioChannels"] = 32 });
     }
 
     private static string Hash(string path) { using var s = File.OpenRead(path); return Convert.ToHexString(SHA256.HashData(s)).ToLowerInvariant(); }

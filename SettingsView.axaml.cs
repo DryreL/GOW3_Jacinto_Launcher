@@ -19,11 +19,13 @@ public partial class SettingsView : UserControl
     private readonly Action showGuide;
     private MultipatchBridge.SaveBackup[] backups = Array.Empty<MultipatchBridge.SaveBackup>();
     private System.Collections.Generic.List<MultipatchInstaller.Entry> damaged = new();
-    private Button? armed;
     private readonly GameLanguages.Item[] gameLanguages;
 
     internal ComboBox GameLanguage => GameLanguageBox;
-    internal GameLanguages.Item? SelectedGameLanguage => GameLanguageBox.SelectedIndex >= 0 ? gameLanguages[GameLanguageBox.SelectedIndex] : null;
+    internal TextBox CustomLanguage => CustomLanguageBox;
+    private bool CustomGameLanguage => GameLanguageBox.SelectedIndex == gameLanguages.Length;
+    internal GameLanguages.Item? SelectedGameLanguage => CustomGameLanguage ? new GameLanguages.Item(GameLanguages.Code(CustomLanguageBox.Text), GameLanguages.Code(CustomLanguageBox.Text), null)
+        : GameLanguageBox.SelectedIndex >= 0 ? gameLanguages[GameLanguageBox.SelectedIndex] : null;
 
     public SettingsView() : this(null, new LauncherConfig(), "", () => { }, () => Task.FromResult<string?>(null), () => { }) { }
 
@@ -40,8 +42,9 @@ public partial class SettingsView : UserControl
         L.Apply(this);
         LanguageBox.ItemsSource = L.Languages.Select(l => l.NativeName).ToArray();
         gameLanguages = GameLanguages.All(gameDir);
-        GameLanguageBox.ItemsSource = gameLanguages.Select(l => l.Name).ToArray();
+        GameLanguageBox.ItemsSource = gameLanguages.Select(l => l.Name).Append(L.T("Custom")).ToArray();
         GameLanguageBox.SelectionChanged += (_, _) => ShowGameLanguageNote();
+        CustomLanguageBox.TextChanged += (_, _) => ShowGameLanguageNote();
         Reload();
         GamePathText.Text = gameDir ?? L.T("The installation is detected automatically.");
         ShortcutButton.IsVisible = OperatingSystem.IsWindows() || OperatingSystem.IsLinux();
@@ -66,6 +69,8 @@ public partial class SettingsView : UserControl
         LanguageBox.SelectedIndex = Array.FindIndex(L.Languages, l => l.Code == L.Current);
         SkipIntroCheck.IsChecked = config.SkipIntro;
         BackupCheck.IsChecked = config.BackupSaveOnLaunch;
+        CloseToTrayCheck.IsChecked = config.CloseToTray;
+        MultipleInstancesCheck.IsChecked = config.AllowMultipleInstances;
         TelemetryCheck.IsChecked = config.TelemetryEnabled;
         RunnerBox.Text = config.WineRunner;
         PrefixBox.Text = config.WinePrefix;
@@ -82,11 +87,30 @@ public partial class SettingsView : UserControl
         Save("Settings saved.");
     }
 
-    internal void SelectGameLanguage(string code) => GameLanguageBox.SelectedIndex = Math.Max(0, Array.FindIndex(gameLanguages, l => l.Code == code));
+    // A code the list does not know is a custom one.
+    internal void SelectGameLanguage(string code)
+    {
+        var known = Array.FindIndex(gameLanguages, l => l.Code == code);
+        if (known < 0) CustomLanguageBox.Text = code;
+        GameLanguageBox.SelectedIndex = known >= 0 ? known : gameLanguages.Length;
+    }
 
     // Community packs are downloaded by the player: Nexus Mods gives direct downloads through its API to Premium members only.
     private void ShowGameLanguageNote()
     {
+        CustomLanguageRow.IsVisible = CustomGameLanguage;
+        if (CustomGameLanguage)
+        {
+            var code = GameLanguages.Code(CustomLanguageBox.Text);
+            LanguageModButton.IsVisible = false;
+            GameLanguageNote.IsVisible = true;
+            GameLanguageNote.Classes.Set("error", code.Length == 3 && gameDir is not null && !GameLanguages.Installed(gameDir, code));
+            GameLanguageNote.Text = code.Length != 3 ? L.T("Type the game's three-letter language code, such as FRA or POL.")
+                : gameDir is not null && !GameLanguages.Installed(gameDir, code) ? L.F("This game has no {0} language: {1} is missing. Install the language pack first.", code, System.IO.Path.Combine("GearGame", "Localization", code))
+                : L.F("{0} is installed. Press Apply settings to use it.", code);
+            return;
+        }
+        GameLanguageNote.Classes.Remove("error");
         var item = SelectedGameLanguage;
         LanguageModButton.IsVisible = item?.ModUrl is not null;
         var missing = item is not null && gameDir is not null && !GameLanguages.Installed(gameDir, item.Code);
@@ -161,6 +185,8 @@ public partial class SettingsView : UserControl
     }
 
     private void Backup_Toggle(object? sender, RoutedEventArgs e) { config.BackupSaveOnLaunch = BackupCheck.IsChecked == true; Save("Settings saved."); }
+    private void MultipleInstances_Click(object? sender, RoutedEventArgs e) { config.AllowMultipleInstances = MultipleInstancesCheck.IsChecked == true; Save("Settings saved."); }
+    private void CloseToTray_Click(object? sender, RoutedEventArgs e) { config.CloseToTray = CloseToTrayCheck.IsChecked == true; Save("Settings saved."); }
 
     private void Telemetry_Click(object? sender, RoutedEventArgs e)
     {
@@ -194,7 +220,7 @@ public partial class SettingsView : UserControl
     {
         try
         {
-            if (GameLayout.GameRunning()) throw new InvalidOperationException("Close the game before backing up saves.");
+            if (GameLayout.GameRunning()) throw new UserActionException("Close the game before backing up saves.");
             if (gameDir is null) throw new InvalidOperationException("Game installation was not detected.");
             LauncherDiagnostics.Info("Save backup completed: " + MultipatchBridge.BackupAllSaves(gameDir));
             LoadBackups();
@@ -211,6 +237,7 @@ public partial class SettingsView : UserControl
     {
         var managed = gameDir is not null && MultipatchInstaller.Managed(gameDir);
         VerifyButton.IsVisible = managed;
+        AuditButton.IsVisible = gameDir is not null && GameLayout.ToolFilesDir(gameDir) is not null;
         RepairButton.IsVisible = RepairButton.IsVisible && managed;
     }
 
@@ -223,21 +250,12 @@ public partial class SettingsView : UserControl
         RestoreButton.IsEnabled = backups.Length != 0;
     }
 
-    // Two clicks instead of a dialog: dialogs are awkward with a gamepad and in Steam gaming mode.
-    private bool Confirmed(Button button)
-    {
-        if (ReferenceEquals(armed, button)) { armed = null; return true; }
-        armed = button;
-        button.Content = L.T("Click again to confirm");
-        return false;
-    }
-
     // Steam reads its library once at start and rewrites the file from memory, so it has to restart to take the new entry.
     private async void Steam_Click(object? sender, RoutedEventArgs e)
     {
         var running = SteamShortcut.MustRestart;
         if (running && GameLayout.GameRunning()) { GamePathText.Text = L.T("Close the game first."); return; }
-        if (running && !Confirmed(SteamButton)) { GamePathText.Text = L.T("Steam reads its library only when it starts, so it will close and reopen."); return; }
+        if (running && (TopLevel.GetTopLevel(this) is not MainWindow window || !await window.ConfirmAsync(L.T("ADD TO STEAM"), L.T("Steam reads its library only when it starts, so it will close and reopen."), L.T("Add to Steam")))) return;
         SteamButton.IsEnabled = false;
         var executable = Environment.ProcessPath;
         try
@@ -253,8 +271,12 @@ public partial class SettingsView : UserControl
             LauncherDiagnostics.Error("Add to Steam failed", exception);
             GamePathText.Text = exception is TimeoutException ? L.T("Steam did not close. Close it yourself, then try again.") : L.T("An error occurred. See Diagnostics.");
         }
-        SteamButton.Content = L.T("Add to Steam");
         SteamButton.IsEnabled = true;
+    }
+
+    private async void Audit_Click(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is MainWindow window) await window.ShowAuditAsync();
     }
 
     private async void Verify_Click(object? sender, RoutedEventArgs e)
@@ -298,9 +320,10 @@ public partial class SettingsView : UserControl
         finally { RepairButton.IsEnabled = true; }
     }
 
-    private void Restore_Click(object? sender, RoutedEventArgs e)
+    private async void Restore_Click(object? sender, RoutedEventArgs e)
     {
-        if (gameDir is null || BackupBox.SelectedIndex < 0 || !Confirmed(RestoreButton)) return;
+        if (gameDir is null || BackupBox.SelectedIndex < 0) return;
+        if (TopLevel.GetTopLevel(this) is not MainWindow window || !await window.ConfirmAsync(L.T("RESTORE BACKUP"), L.T("Your current saves are backed up first, then this backup replaces them."), L.T("Restore Selected Backup"))) return;
         try
         {
             MultipatchBridge.RestoreSaves(gameDir, backups[BackupBox.SelectedIndex].Directory);
@@ -312,7 +335,6 @@ public partial class SettingsView : UserControl
             LauncherDiagnostics.Error("Save restore failed", exception);
             BackupStatusText.Text = L.T("An error occurred. See Diagnostics.");
         }
-        RestoreButton.Content = L.T("Restore Selected Backup");
     }
 
 }

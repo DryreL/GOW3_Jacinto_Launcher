@@ -10,9 +10,9 @@
           <Button x:Name="CollapseButton" Classes="collapse" AutomationProperties.Name="Collapse menu" ToolTip.Tip="Collapse menu" Click="Collapse_Click"><PathIcon Width="10" Height="10" Data="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></Button>
           <DockPanel Margin="0,0,0,20" Background="Transparent" Cursor="Hand" ToolTip.Tip="About" Tapped="Logo_Tapped">
             <Image Classes="logo" Source="/assets/icon256.png" RenderOptions.BitmapInterpolationMode="HighQuality"/>
-            <StackPanel Classes="full" VerticalAlignment="Center"><TextBlock Text="GEARS OF WAR 3" FontWeight="Bold" FontSize="15"/><StackPanel Orientation="Horizontal" Spacing="9" Margin="0,3,0,0"><TextBlock Text="JACINTO" Foreground="{DynamicResource AccentTextBrush}" FontWeight="Bold" FontSize="15" LetterSpacing="4" VerticalAlignment="Center"/><Button x:Name="VersionButton" Classes="badge" AutomationProperties.Name="Version" ToolTip.Tip="Changelog" VerticalAlignment="Center" Click="Version_Click"><TextBlock x:Name="VersionText"/></Button></StackPanel></StackPanel>
+            <StackPanel Classes="full" VerticalAlignment="Center"><TextBlock Text="GEARS OF WAR 3" FontWeight="Bold" FontSize="15"/><StackPanel Orientation="Horizontal" Spacing="3" Margin="0,3,0,0"><TextBlock Text="JACINTO" Foreground="{DynamicResource AccentTextBrush}" FontWeight="Bold" FontSize="15" LetterSpacing="4" VerticalAlignment="Center"/><TextBlock Text="v1.1.1" Foreground="{DynamicResource AccentTextBrush}" FontWeight="Bold" FontSize="15" VerticalAlignment="Center"/></StackPanel><Button x:Name="VersionButton" Classes="version" AutomationProperties.Name="Version" ToolTip.Tip="Changelog" Click="Version_Click"><StackPanel Orientation="Horizontal" Spacing="4"><TextBlock Text="Launcher version"/><TextBlock x:Name="VersionText" Foreground="{DynamicResource AccentTextBrush}" FontWeight="Bold"/><Border x:Name="NewBadge" Classes="badge new" IsVisible="False" Margin="2,0,0,0"><TextBlock Text="NEW!"/></Border></StackPanel></Button></StackPanel>
           </DockPanel>
-          <TextBlock Text="SIGNED IN AS" Classes="muted full" FontSize="11"/>
+          <TextBlock Text="WELCOME," Classes="muted full" FontSize="11"/>
           <DockPanel Classes="full" Margin="0,3,0,18">
             <Button x:Name="EditNameButton" DockPanel.Dock="Right" AutomationProperties.Name="Edit player name" MinHeight="26" Width="30" Height="26" Padding="0" Margin="8,0,0,0" Click="EditName_Click"><PathIcon Width="13" Height="13" Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></Button>
             <TextBlock x:Name="PlayerNameText" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -40,6 +40,18 @@
           <Image x:Name="HomeArt" Grid.RowSpan="2" RenderOptions.BitmapInterpolationMode="HighQuality"/>
           <Border Grid.Row="1" Background="{DynamicResource HomeFadeBrush}"/>
         </Grid>
+        <!-- Store banner: closes for this session only, so it is back the next time the launcher starts. -->
+        <Panel x:Name="AdBanner" VerticalAlignment="Top" HorizontalAlignment="Stretch" Cursor="Hand" PointerPressed="Ad_Pressed">
+          <Panel.Styles>
+            <Style Selector="Button#AdClose"><Setter Property="Opacity" Value="0"/></Style>
+            <Style Selector="Panel#AdBanner:pointerover Button#AdClose"><Setter Property="Opacity" Value="0.55"/></Style>
+            <Style Selector="Panel#AdBanner Button#AdClose:pointerover"><Setter Property="Opacity" Value="0.9"/></Style>
+          </Panel.Styles>
+          <Image x:Name="AdImage" Stretch="Uniform" AutomationProperties.Name="DryreL artworks store"/>
+          <Button x:Name="AdClose" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,3,3,0" Padding="3" MinWidth="0" MinHeight="0" Background="#99000000" BorderThickness="0" Cursor="Arrow" ToolTip.Tip="Close" AutomationProperties.Name="Close ad" Click="AdClose_Click">
+            <PathIcon Width="8" Height="8" Foreground="White" Data="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+          </Button>
+        </Panel>
         <Border VerticalAlignment="Bottom" Padding="32,56,32,26" Background="{DynamicResource HomeScrimBrush}">
           <StackPanel>
             <TextBlock x:Name="StatusText" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
@@ -108,8 +120,8 @@
   <Border x:Name="WrongBuildOverlay" Classes="overlay" Background="#D8000000" IsVisible="False">
     <Border Classes="card" BorderBrush="{DynamicResource AccentBrush}" Width="540" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24">
       <StackPanel>
-        <TextBlock Text="WRONG GAME VERSION" Classes="h2"/>
-        <TextBlock Text="This looks like Project Jacinto v1.1.2. The Multipatch must be installed on v1.1.1: v1.1.1 is the campaign build, while v1.1.2 is a different build with Horde and multiplayer. Choose a v1.1.1 folder." TextWrapping="Wrap" Margin="0,0,0,16"/>
+        <TextBlock x:Name="WrongBuildTitle" Text="WRONG GAME VERSION" Classes="h2"/>
+        <TextBlock x:Name="WrongBuildText" Text="This looks like Project Jacinto v1.1.2. The Multipatch must be installed on v1.1.1: v1.1.1 is the campaign build, while v1.1.2 is a different build with Horde and multiplayer. Choose a v1.1.1 folder." TextWrapping="Wrap" Margin="0,0,0,16"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
           <Button x:Name="WrongBuildOk" Content="OK" Classes="primary" Click="WrongBuild_Click"/>
         </StackPanel>
@@ -130,6 +142,28 @@
       </StackPanel>
     </Border>
   </Border>
+  <Border x:Name="ConfirmOverlay" Classes="overlay" Background="#D8000000" IsVisible="False">
+    <Border Classes="card" BorderBrush="{DynamicResource AccentBrush}" Width="540" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24">
+      <StackPanel>
+        <TextBlock x:Name="ConfirmTitle" Classes="h2"/>
+        <TextBlock x:Name="ConfirmText" TextWrapping="Wrap" Margin="0,0,0,16"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+          <Button x:Name="ConfirmNo" Content="Cancel" Click="ConfirmNo_Click"/>
+          <Button x:Name="ConfirmYes" Classes="warn" Click="ConfirmYes_Click"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </Border>
+  <Border x:Name="AuditOverlay" Classes="overlay" Background="#D8000000" IsVisible="False">
+    <Border Classes="card" BorderBrush="{DynamicResource AccentBrush}" Width="760" MaxHeight="600" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="INSTALLATION AUDIT" Classes="h2"/>
+        <TextBlock x:Name="AuditSummary" DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,12"/>
+        <Button x:Name="AuditClose" DockPanel.Dock="Bottom" Content="Close" HorizontalAlignment="Right" Margin="0,16,0,0" Click="AuditClose_Click"/>
+        <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel x:Name="AuditList" Spacing="6"/></ScrollViewer>
+      </DockPanel>
+    </Border>
+  </Border>
   <Border x:Name="MovieOverlay" Classes="overlay" Background="#D8000000" IsVisible="False">
     <Border Classes="card" BorderBrush="{DynamicResource AccentBrush}" Width="540" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24">
       <StackPanel>
@@ -142,6 +176,21 @@
           <Button x:Name="MoviePlayButton" Content="Play anyway" Classes="primary" Click="MoviePlay_Click"/>
         </StackPanel>
       </StackPanel>
+    </Border>
+  </Border>
+  <Border x:Name="ErrorOverlay" Classes="overlay" Background="#D8000000" IsVisible="False">
+    <Border Classes="card" BorderBrush="{DynamicResource AccentBrush}" Width="760" MaxHeight="600" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="SOMETHING WENT WRONG" Classes="h2"/>
+        <TextBlock x:Name="ErrorSummary" DockPanel.Dock="Top" TextWrapping="Wrap" Classes="error" Margin="0,0,0,8"/>
+        <TextBlock DockPanel.Dock="Top" Text="Copy the details into a bug report. The log folder holds the full record." Classes="muted" TextWrapping="Wrap" Margin="0,0,0,10"/>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,16,0,0">
+          <Button x:Name="ErrorCopy" Content="Copy details" Click="ErrorCopy_Click"/>
+          <Button Content="Open log folder" Click="ErrorLogs_Click"/>
+          <Button x:Name="ErrorClose" Content="Close" Classes="primary" Click="ErrorClose_Click"/>
+        </StackPanel>
+        <TextBox x:Name="ErrorDetails" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas,Menlo,monospace" FontSize="12" AcceptsReturn="True" ScrollViewer.VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Error details"/>
+      </DockPanel>
     </Border>
   </Border>
   </Panel>

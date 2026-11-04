@@ -14,7 +14,9 @@ internal static class InfoUi
     internal static TextBlock Text(string text, double size = 13, FontWeight weight = FontWeight.Normal) => new() { Text = L.T(text), FontSize = size, FontWeight = weight, TextWrapping = TextWrapping.Wrap };
     internal static TextBlock Muted(string text) { var block = Text(text); block.Classes.Add("muted"); return block; }
     internal static TextBlock Heading(string text) { var block = Text(text); block.Classes.Add("h2"); return block; }
-    internal static Bitmap Asset(string path) { using var stream = AssetLoader.Open(new Uri("avares://GoW3Jacinto_Launcher/assets/" + path)); return new Bitmap(stream); }
+    // The assembly's own name, so a renamed launcher still finds its files.
+    internal static Uri Resource(string path) => new("avares://" + typeof(InfoUi).Assembly.GetName().Name + "/" + path);
+    internal static Bitmap Asset(string path) { using var stream = AssetLoader.Open(Resource("assets/" + path)); return new Bitmap(stream); }
 
     /// <summary>A page whose title stays in place while its content scrolls under it.</summary>
     internal static Control Titled(string title, Control body)
@@ -159,7 +161,8 @@ internal sealed class RecommendedPage : UserControl
     {
         ("Türkçe", "Turkish translation.", "mods/turkish.jpg", "https://www.nexusmods.com/gearsofwar3/mods/26"),
         ("Português - Brasil", "Brazilian Portuguese translation. Install the Multipatch again after it.", "mods/ptbr.jpg", "https://www.nexusmods.com/gearsofwar3/mods/24"),
-        ("繁體中文", "Traditional Chinese translation. Its larger subtitle font is already in the launcher, so mod 35 is not needed.", "mods/chinese.jpg", "https://www.nexusmods.com/gearsofwar3/mods/31")
+        ("繁體中文", "Traditional Chinese translation. Its larger subtitle font is already in the launcher, so mod 35 is not needed.", "mods/chinese.jpg", "https://www.nexusmods.com/gearsofwar3/mods/31"),
+        ("Русский", "Russian translation.", "mods/russian.jpg", "https://www.nexusmods.com/gearsofwar3/mods/33")
     };
 
     internal RecommendedPage()
@@ -231,13 +234,46 @@ internal sealed class CheatsPage : UserControl
         ("SP_Char_P", "load_01_s .. load_tower_2_s load the sub levels of the chapter; stream_in_audio_level / stream_out_audio_level"), ("SP_Badlands2_P", "cine_tower, cine_transition2 (play the cinematics)"), ("SP_Ravens_P, SP_Ravens2_P", "firstfight, hangar, shakez, gogo (battle / flow triggers)"), ("SP_Azura_P, SP_Azura2_P", "gogo (start the next section)"), ("SP_Char_Tower_2_elevator_S", "enable_lift_ride, golift (starts the Tower 2 lift)"), ("SP_Char_05_S", "gotrain, holego, test_trainjumper, test_truck"), ("SP_Hanover_P / SP_Mercy_P", "cine_stranded / cine_townhall, cometopapa, prepshowdown"), ("SP_Badlands_xx_S, SP_Char_xx_S", "test_xx_S events spawn the section enemies (spawntest, test_bomb, test_14_S ...)")
     };
 
-    internal CheatsPage()
+    private readonly string? game;
+    private readonly CheckBox hotkeys = new() { Content = L.T("Cheat hotkeys in the game") };
+    private readonly TextBlock hotkeyStatus = InfoUi.Muted("");
+
+    internal CheatsPage(string? gameDir = null)
     {
+        game = gameDir;
         var panel = new StackPanel();
+        if (game is not null && CheatKeys.On(game, GameRunner.DocumentsRoot(MultipatchBridge.Config)) is { } on)
+        {
+            hotkeys.IsChecked = on;
+            hotkeys.Click += (_, _) => SetHotkeys();
+            var note = InfoUi.Muted(L.T("Off keeps the keys below from doing anything in the game, so they cannot clash with your own controls. The console commands still work."));
+            note.Margin = new Thickness(0, 6, 0, 0);
+            hotkeyStatus.Margin = new Thickness(0, 6, 0, 0);
+            var card = new Border { Child = new StackPanel { Children = { InfoUi.Heading(L.T("CHEAT HOTKEYS")), hotkeys, note, hotkeyStatus } } };
+            card.Classes.Add("card");
+            panel.Children.Add(card);
+        }
         panel.Children.Add(Section("HOTKEYS IN THE GAME", "Press the key during a mission. Most cheats show a message on the screen.", Hotkeys));
         panel.Children.Add(Section("CONSOLE COMMANDS", "Open the console with the tilde key (~), type the command and press Enter. They are meant for the campaign on your own PC, or as the co-op host.", Commands));
         panel.Children.Add(Section("LEVEL EVENTS AND CHECKPOINT JUMPS", "Type ce <name> in the console while that map is loaded. They are developer test events, so the result can differ from the normal game. A jump moves the story forward: save before you use it.", Events));
         Content = InfoUi.Titled(L.T("CHEATS"), panel);
+    }
+
+    private void SetHotkeys()
+    {
+        var on = hotkeys.IsChecked == true;
+        try
+        {
+            CheatKeys.Set(game!, GameRunner.DocumentsRoot(MultipatchBridge.Config), on);
+            hotkeyStatus.Text = L.T(on ? "Cheat hotkeys are on." : "Cheat hotkeys are off.");
+            Telemetry.Track("cheat_hotkeys", "enabled", on);
+        }
+        catch (Exception exception)
+        {
+            hotkeys.IsChecked = !on;
+            if (exception is not UserActionException) LauncherDiagnostics.Error("Cheat hotkeys change failed", exception);
+            hotkeyStatus.Text = L.T(exception.Message);
+        }
     }
 
     private static Control KeyBox(string key)

@@ -23,7 +23,7 @@ SETTINGS
 - Display mode has Fullscreen, Windowed and, on Windows, Borderless window, which uses the
   Vulkan renderer (DXVK).
 - The Vulkan renderer (DXVK) is optional, in Settings > Display. It downloads one file.
-- To change your name, press the pencil next to "Signed in as".
+- To change your name, press the pencil next to it at the top left.
 - Press Apply after changing game settings, then restart the game.
 
 PLATFORM NOTES

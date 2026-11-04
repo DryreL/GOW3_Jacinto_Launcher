@@ -19,7 +19,7 @@ internal sealed class TextPage : UserControl
 
     internal TextPage(string title, string resource)
     {
-        using var stream = AssetLoader.Open(new Uri("avares://GoW3Jacinto_Launcher/" + resource));
+        using var stream = AssetLoader.Open(InfoUi.Resource(resource));
         using var reader = new StreamReader(stream);
         var text = reader.ReadToEnd().Replace("\r\n", "\n");
         var panel = new StackPanel();
@@ -86,7 +86,7 @@ internal sealed class TextPage : UserControl
     private Control CreditLine(string line)
     {
         var parts = line.Split(" - ", 2);
-        if (parts.Length != 2 || !Profiles.TryGetValue(parts[0], out var profile))
+        if (!Profiles.TryGetValue(parts[0], out var profile))
         {
             var plain = new TextBlock { Text = line.Length == 0 ? " " : L.T(line), FontSize = 13, TextWrapping = TextWrapping.Wrap, MinHeight = 20, FontWeight = line == line.ToUpperInvariant() || line.EndsWith(':') ? FontWeight.Bold : FontWeight.Normal };
             if (line.StartsWith("You never need to donate", StringComparison.Ordinal)) plain.Classes.Add("muted");
@@ -98,6 +98,7 @@ internal sealed class TextPage : UserControl
         {
             if (TopLevel.GetTopLevel(this) is { } top) await top.Launcher.LaunchUriAsync(new Uri("https://www.nexusmods.com/profile/" + profile));
         };
+        if (parts.Length == 1) { link.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left; return link; }
         var row = new DockPanel();
         DockPanel.SetDock(link, Dock.Left);
         row.Children.Add(link);

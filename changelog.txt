@@ -5,6 +5,48 @@ Game: Gears of War 3 Jacinto Build v1.1.1
 NexusMods Page: https://www.nexusmods.com/gearsofwar3/mods/27
 =================================================================
 
+v0.3.9 (03 Nov 2026, 11:21 AM)
+- Fixed a game crash a few seconds into the campaign: the FXAA / Temporal AA setting stopped the game, so it is gone and a saved choice turns off by itself.
+- Settings: an option you changed but did not save gets a star and the theme color. Revert settings and Reset to Defaults replace Rollback, and both ask first.
+- Uninstall Multipatch, Restore Selected Backup and Add to Steam ask in a window instead of a second click. Add to Steam asks only when Steam has to restart.
+- If JacintoNet gets a new version, the launcher tells you once, because co-op partners must update too.
+- Steam co-op: a player on Keyboard and a player on Gamepad can join each other. The gamepad icon file kept the original file's identity, and the game refused to connect over it. Older gamepad installations are fixed the next time the game starts.
+- Steam Input is off by default for the game, so it no longer replaces the gamepad's own buttons. It is set while Steam is closed, and at Add to Steam; a choice you made in Steam stays.
+- Subtitle size: Big and Normal now both copy the tool's two font files (WarfareFonts and WarfareFonts2x) into the game; Big used to leave the game's own WarfareFonts. Chinese keeps its own pair. Apply also checks the font files and the font name, and stops with an error if they do not match the chosen size.
+- Installation audit: after Install, and from Settings > General, the launcher checks the patched files, every game setting, the keys, the network mode and the launcher, and says what is wrong and where. It also checks the game language and the Horde and Beast menu entries.
+- Resolution: Custom lets you type a width and height. Sizes under 640x480 or larger than your main display are refused with the reason.
+- Resolution: DSR (NVIDIA) and VSR (AMD) sizes above your display's own are listed, and a custom size may go up to the largest of them.
+- Audio: Master volume at the top of the Audio tab. It scales music, effects and dialogue together.
+- Every launcher error opens a window with the details, Copy details and Open log folder. Refusals you can fix yourself, such as "Close the game first", still show where they happen.
+- Settings > Launcher: Minimize to the system tray when closed, on by default. The close button keeps the launcher in the tray, so the online count stays right; exit from the tray icon.
+- Cheats: a switch at the top turns the cheat hotkeys (G, K, L, O, J, number pad weapons ...) on or off in the game. The console commands keep working.
+- Controls: a key that is also a cheat hotkey is allowed, with a warning that the game does both.
+- Clicking the tab that is already open no longer reloads it, so unsaved changes stay.
+- Only one launcher opens at a time: starting it again brings the open one forward, from the tray too. Settings > Launcher can allow more.
+- The tray icon menu has Play Offline and Play on Steam.
+- The launcher version is in the theme color, with a NEW! badge on the day a version comes out and the day after. The gap between JACINTO and v1.1.1 is gone.
+- Usage statistics send far fewer events: no button clicks, and each page once a session. Launches, installs, updates and applied settings are still counted.
+- Game language: Custom lets you type a language code. The launcher says if the game has no such language.
+- Audio channels 64 and 128 are locked while the Vulkan renderer is on; a saved 64 or 128 goes back to 32 when the game starts.
+- Frame rate limit says Unlimited instead of Default. "Signed in as" is now "Welcome,". Experimental options carry a badge.
+- The wrong version warning shows only when the folder name says 1.1.2. Any other folder is treated as 1.1.1, and Install names any file that is not the original.
+- Hungarian launcher language. A new language can be added with one languages-<code>.csv file beside the launcher.
+- The launcher uses less memory and processor time while minimized or in the tray.
+- Thicker sliders, icons on the Keyboard and Gamepad tabs, and the game and launcher versions under the title.
+- FAQ answers no longer shrink when you press them.
+- Added macOS developer app signature.
+- Added Russian to the community languages.
+- Added new supporter to Credits screen.
+- Added DryreL Artworks banner animation to Home screen.
+- A game folder without GearGame.u now gets a clear message when you choose it or press Install. Install used to do nothing.
+- Installing no longer fails when a launcher is open from the game folder: it asks you to close it first. Read-only files no longer stop a restore.
+- A game in OneDrive or another linked folder gets a clear message.
+- Fixed from crash reports: read-only files no longer stop the player name from being written (the game failed to start), a save restore or an uninstall; a launcher folder Windows does not let us write to (such as Program Files) keeps its settings in your user folder; an older patch data without the subtitle font no longer stops Apply; "Run as administrator" on the game and a game folder Windows does not let us write to get a clear message; not enough free space, a missing GearGame.exe and a missing start script are messages, not errors.
+- A Multi Patch Tool installation made on Linux or SteamOS is now recognized when the launcher is added to it.
+- Offline players no longer see an error when an update brings a newer JacintoNet.
+- If an antivirus takes the launcher copied to the game folder, Continue says so.
+- Optimization: The launcher consumes less RAM while in the background.
+
 v0.3.8 (02 Nov 2026, 1:22AM)
 - New launcher: a native application for Windows, Linux, Steam Deck and macOS (Avalonia, .NET 10). No .NET, PowerShell or .bat file is needed to install or play.
 - Coming from v0.3.7:

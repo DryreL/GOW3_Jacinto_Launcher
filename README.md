@@ -1,5 +1,7 @@
 # Gears of War 3 Jacinto: Multipatch Launcher
 
+![Thumbnail](assets/multipatch.png)
+
 An all-in-one community patch and launcher for **Gears of War 3 Project Jacinto v1.1.1** on PC. It fixes campaign soft-locks and crashes, scales the interface to any screen, adds online co-op through Steam, and lets you change settings and controls without editing files.
 
 **Download:** [Nexus Mods](https://www.nexusmods.com/gearsofwar3/mods/27) or [GitHub Releases](https://github.com/DryreL/GOW3_Jacinto_Launcher/releases)
@@ -74,7 +76,7 @@ JacintoNet carries the game's traffic over Steam P2P, so no port forwarding or V
 - Graphics, audio, controls, player name, FOV and game language in one place.
 - Verify, Repair and save backups. Automatic updates that keep your settings.
 - Add to Steam, Discord presence, themes, and full keyboard and gamepad navigation.
-- Interface in 8 languages. Community language packs are listed on the Recommended page.
+- Interface in 9 languages. Community language packs are listed on the Recommended page.
 
 ## Reporting bugs
 

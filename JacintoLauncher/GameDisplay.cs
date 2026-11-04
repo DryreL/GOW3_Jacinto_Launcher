@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO;
@@ -30,9 +31,9 @@ internal static class Dxvk
 
     internal static async Task InstallAsync(string gameDir)
     {
-        if (GameLayout.GameRunning()) throw new InvalidOperationException("Close the game first.");
+        if (GameLayout.GameRunning()) throw new UserActionException("Close the game first.");
         var target = Dll(gameDir);
-        if (File.Exists(target)) { if (Hash(target) == DllHash) return; throw new InvalidOperationException("Another d3d9.dll is already in the game folder; it was left alone."); }
+        if (File.Exists(target)) { if (Hash(target) == DllHash) return; throw new UserActionException("Another d3d9.dll is already in the game folder; it was left alone."); }
         using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("GoW3JacintoLauncher");
         var archive = await client.GetByteArrayAsync(Download);
@@ -59,7 +60,7 @@ internal static class Dxvk
     /// <summary>Only our own build is removed: any other d3d9.dll belongs to the player.</summary>
     internal static void Remove(string gameDir)
     {
-        if (GameLayout.GameRunning()) throw new InvalidOperationException("Close the game first.");
+        if (GameLayout.GameRunning()) throw new UserActionException("Close the game first.");
         if (Installed(gameDir)) File.Delete(Dll(gameDir));
     }
 }
@@ -117,6 +118,9 @@ internal static class GameLanguages
 
     internal static bool Installed(string gameDir, string code) => Directory.Exists(Path.Combine(gameDir, "GearGame", "Localization", code));
 
+    /// <summary>A typed language code as the game writes it; the engine takes three letters.</summary>
+    internal static string Code(string? typed) => new string((typed ?? "").Trim().ToUpperInvariant().Where(char.IsAsciiLetter).ToArray());
+
     /// <summary>The known languages, then any other pack the player put in GearGame\Localization.</summary>
     internal static Item[] All(string? gameDir)
     {
@@ -162,6 +166,12 @@ internal static class InputProfile
     internal static void ToKeyboard(byte[] data) { foreach (var (pad, keys) in Swaps) Swap(data, pad, keys, false); }
     internal static void ToGamepad(byte[] data) { foreach (var (pad, keys) in Swaps) Swap(data, keys, pad, true); }
     internal static bool IsGamepad(byte[] data) => data.AsSpan().IndexOf(Swaps[0].Pad) >= 0;
+
+    // A UE3 package header: tag, version, header size, folder name, flags, seven table fields, the GUID table and the thumbnail table, then the GUID.
+    private static int GuidOffset(byte[] package) { var folder = BitConverter.ToInt32(package, 12); return 16 + (folder < 0 ? -folder * 2 : folder) + 4 + 7 * 4 + 4 * 4; }
+
+    /// <summary>Gives <paramref name="package"/> the GUID of <paramref name="from"/>. The game refuses to join a host whose loaded packages have other GUIDs.</summary>
+    internal static void CopyGuid(byte[] from, byte[] package) => from.AsSpan(GuidOffset(from), 16).CopyTo(package.AsSpan(GuidOffset(package)));
 }
 
 /// <summary>Which subtitle font files and font name a language and size need. CHN has its own glyphs; other non-Latin packs keep their own font.</summary>
@@ -179,7 +189,81 @@ internal static class SubtitleFonts
     {
         if (language.Equals("CHN", StringComparison.OrdinalIgnoreCase)) return ("extra/WarfareFonts_cn.upk", "extra/WarfareFonts2x_cn.upk");
         if (KeepsOwnFont(language, force)) return (null, "patch");
-        return (size == "normal" ? "extra/WarfareFonts_normal.upk" : "original", "patch");
+        // The game loads both packages, so big and normal both need the tool's WarfareFonts.upk beside WarfareFonts2x.upk; the font name picks the size.
+        return (size == "default" ? "original" : "extra/WarfareFonts_normal.upk", "patch");
+    }
+}
+
+/// <summary>
+/// The developer hotkeys of the Jacinto build (god, fly, slomo, weapon keys ...) live in GearInput.ini and DefaultInput.ini.
+/// Off puts a ";" before each of those lines, so the game skips them and On gives back exactly what was there.
+/// </summary>
+internal static class CheatKeys
+{
+    private static readonly System.Text.RegularExpressions.Regex Line = new(
+        @"(?im)^(;?)([ \t]*[.+]?Bindings=\(Name=""([^""]+)"",Command=""(?:god|badass|kill enemy|kill ai|loaded|debugai|debugaicycle|invis|show paths|show cover|show collision|show dynamicshadows|togglehandik|slomo|fly|ghost|walk|stat fps|stat engine|stat d3d|playersonly|servertravel|viewmode|camera|adjustfreecam\w*|switchtoweaponclass|togglephysicsmode|freezerendering|shot)(?=[""\s\\])[^\r\n]*?)(\r?)$");
+
+    internal static string[] Files(string game, string? documents)
+    {
+        var config = Path.Combine(game, "GearGame", "Config");
+        var files = new[] { Path.Combine(config, "GearInput.ini"), Path.Combine(config, "DefaultInput.ini") }.ToList();
+        if (documents is not null) files.Add(Path.Combine(documents, "My Games", "Gears of War 3", "GearGame", "Config", "GearInput.ini"));
+        return files.Where(File.Exists).ToArray();
+    }
+
+    /// <summary>True when the hotkeys work, false when they are switched off, null when the input files hold none.</summary>
+    internal static bool? On(string game, string? documents)
+    {
+        var lines = Files(game, documents).SelectMany(f => Line.Matches(File.ReadAllText(f))).ToArray();
+        return lines.Length == 0 ? null : lines.Any(m => m.Groups[1].Value.Length == 0);
+    }
+
+    /// <summary>The keys the switched-on hotkeys use, such as G and NumPadZero.</summary>
+    internal static HashSet<string> Keys(string game, string? documents) =>
+        Files(game, documents).SelectMany(f => Line.Matches(File.ReadAllText(f))).Where(m => m.Groups[1].Value.Length == 0).Select(m => m.Groups[3].Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    internal static void Set(string game, string? documents, bool on)
+    {
+        if (GameLayout.GameRunning()) throw new UserActionException("Close the game before changing the cheat hotkeys.");
+        foreach (var path in Files(game, documents))
+        {
+            // Byte for byte: the same BOM and encoding go back, and a file without a BOM stays without one.
+            var bytes = File.ReadAllBytes(path);
+            var (encoding, skip) = bytes is [0xFF, 0xFE, ..] ? (System.Text.Encoding.Unicode, 2) : bytes is [0xEF, 0xBB, 0xBF, ..] ? (System.Text.Encoding.UTF8, 3) : (System.Text.Encoding.Latin1, 0);
+            var text = encoding.GetString(bytes, skip, bytes.Length - skip);
+            var changed = Line.Replace(text, m => (on ? "" : ";") + m.Groups[2].Value + m.Groups[4].Value);
+            if (changed == text) continue;
+            File.SetAttributes(path, File.GetAttributes(path) & ~FileAttributes.ReadOnly);
+            File.WriteAllBytes(path, bytes[..skip].Concat(encoding.GetBytes(changed)).ToArray());
+        }
+    }
+}
+
+/// <summary>Every size the main display offers, DSR and VSR sizes above the panel's own included.</summary>
+internal static class DisplayModes
+{
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct DevMode
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
+        public short SpecVersion, DriverVersion, Size, DriverExtra;
+        public int Fields, PositionX, PositionY, DisplayOrientation, DisplayFixedOutput;
+        public short Color, Duplex, YResolution, TTOption, Collate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string FormName;
+        public short LogPixels;
+        public int BitsPerPel, PelsWidth, PelsHeight, DisplayFlags, DisplayFrequency, IcmMethod, IcmIntent, MediaType, DitherType, Reserved1, Reserved2, PanningWidth, PanningHeight;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool EnumDisplaySettingsW(string? device, int mode, ref DevMode devMode);
+
+    internal static (int X, int Y)[] Primary()
+    {
+        if (!OperatingSystem.IsWindows()) return Array.Empty<(int, int)>();
+        var modes = new HashSet<(int, int)>();
+        var mode = new DevMode { Size = (short)Marshal.SizeOf<DevMode>() };
+        try { for (var i = 0; EnumDisplaySettingsW(null, i, ref mode); i++) if (mode.PelsWidth >= 640 && mode.PelsHeight >= 480) modes.Add((mode.PelsWidth, mode.PelsHeight)); }
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException) { }
+        return modes.ToArray();
     }
 }
 

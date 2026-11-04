@@ -9,8 +9,9 @@
         <Border x:Name="DisplayCard" Classes="card"><StackPanel>
           <TextBlock Text="DISPLAY" Classes="h2"/>
           <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Resolution" Classes="label"/><ComboBox x:Name="ResolutionBox" Grid.Column="1"/></Grid>
+          <Grid x:Name="CustomResolutionRow" Classes="row" ColumnDefinitions="240,*" IsVisible="False"><TextBlock Text="Custom resolution" Classes="label"/><StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"><TextBox x:Name="CustomWidthBox" Width="110" MaxLength="5" AutomationProperties.Name="Width"/><TextBlock Text="x" VerticalAlignment="Center"/><TextBox x:Name="CustomHeightBox" Width="110" MaxLength="5" AutomationProperties.Name="Height"/></StackPanel></Grid>
           <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Display mode" Classes="label"/><ComboBox x:Name="DisplayModeBox" Grid.Column="1"><ComboBoxItem Content="Fullscreen"/><ComboBoxItem Content="Windowed"/><ComboBoxItem x:Name="BorderlessItem" Content="Borderless window" ToolTip.ShowOnDisabled="True"/></ComboBox></Grid>
-          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Frame rate limit" Classes="label"/><ComboBox x:Name="FpsBox" Grid.Column="1" IsEditable="True"><ComboBoxItem Content="Default"/><ComboBoxItem Content="30"/><ComboBoxItem Content="60"/><ComboBoxItem Content="75"/><ComboBoxItem Content="90"/><ComboBoxItem Content="120"/><ComboBoxItem Content="144"/><ComboBoxItem Content="165"/><ComboBoxItem Content="240"/></ComboBox></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Frame rate limit" Classes="label"/><ComboBox x:Name="FpsBox" Grid.Column="1" IsEditable="True"><ComboBoxItem Content="Unlimited"/><ComboBoxItem Content="30"/><ComboBoxItem Content="60"/><ComboBoxItem Content="75"/><ComboBoxItem Content="90"/><ComboBoxItem Content="120"/><ComboBoxItem Content="144"/><ComboBoxItem Content="165"/><ComboBoxItem Content="240"/></ComboBox></Grid>
           <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Fullscreen refresh rate" Classes="label"/><ComboBox x:Name="RefreshBox" Grid.Column="1" IsEditable="True"><ComboBoxItem Content="Default"/><ComboBoxItem Content="60"/><ComboBoxItem Content="75"/><ComboBoxItem Content="120"/><ComboBoxItem Content="144"/><ComboBoxItem Content="165"/><ComboBoxItem Content="240"/></ComboBox></Grid>
           <Grid Classes="row" ColumnDefinitions="240,*">
             <TextBlock Text="Field of view" Classes="label"/>
@@ -34,7 +35,7 @@
 
         <Border x:Name="GraphicsCard" Classes="card"><StackPanel>
           <TextBlock Text="GRAPHICS" Classes="h2"/>
-          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Anti-aliasing" Classes="label"/><ComboBox x:Name="AaBox" Grid.Column="1"><ComboBoxItem Content="Off"/><ComboBoxItem Content="FXAA / Temporal AA"/><ComboBoxItem Content="MSAA 2x"/><ComboBoxItem Content="MSAA 4x"/></ComboBox></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Anti-aliasing" Classes="label"/><ComboBox x:Name="AaBox" Grid.Column="1"><ComboBoxItem Content="Off"/><ComboBoxItem Content="MSAA 2x"/><ComboBoxItem Content="MSAA 4x"/></ComboBox></Grid>
           <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Anisotropic filtering" Classes="label"/><ComboBox x:Name="AnisotropyBox" Grid.Column="1"><ComboBoxItem Content="1x"/><ComboBoxItem Content="2x"/><ComboBoxItem Content="4x"/><ComboBoxItem Content="8x"/><ComboBoxItem Content="16x"/></ComboBox></Grid>
           <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Graphics detail" Classes="label"/><ComboBox x:Name="GraphicsQualityBox" Grid.Column="1"><ComboBoxItem Content="Low"/><ComboBoxItem Content="Medium"/><ComboBoxItem Content="High"/><ComboBoxItem Content="Ultra"/></ComboBox></Grid>
           <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Shadows" Classes="label"/><ComboBox x:Name="ShadowQualityBox" Grid.Column="1"><ComboBoxItem Content="Low"/><ComboBoxItem Content="Medium"/><ComboBoxItem Content="High"/><ComboBoxItem Content="Ultra"/></ComboBox></Grid>
@@ -46,11 +47,12 @@
 
         <Border x:Name="AudioCard" Classes="card"><StackPanel>
           <TextBlock Text="AUDIO" Classes="h2"/>
+          <Grid Classes="row" ColumnDefinitions="240,*,56"><TextBlock Text="Master volume" Classes="label"/><Slider x:Name="MasterSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="Master volume"/><TextBlock Grid.Column="2" Text="{Binding #MasterSlider.Value, StringFormat={}{0:0}%}" x:CompileBindings="False" TextAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/></Grid>
           <Grid Classes="row" ColumnDefinitions="240,*,56"><TextBlock Text="Music volume" Classes="label"/><Slider x:Name="MusicSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="Music volume"/><TextBlock Grid.Column="2" Text="{Binding #MusicSlider.Value, StringFormat={}{0:0}%}" x:CompileBindings="False" TextAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/></Grid>
           <Grid Classes="row" ColumnDefinitions="240,*,56"><TextBlock Text="Effects volume" Classes="label"/><Slider x:Name="EffectsSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="Effects volume"/><TextBlock Grid.Column="2" Text="{Binding #EffectsSlider.Value, StringFormat={}{0:0}%}" x:CompileBindings="False" TextAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/></Grid>
           <Grid Classes="row" ColumnDefinitions="240,*,56"><TextBlock Text="Dialogue volume" Classes="label"/><Slider x:Name="DialogueSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="100" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="Dialogue volume"/><TextBlock Grid.Column="2" Text="{Binding #DialogueSlider.Value, StringFormat={}{0:0}%}" x:CompileBindings="False" TextAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/></Grid>
           <TextBlock Text="These work on top of the volume sliders in the game's own Options menu." Classes="muted" Margin="0,0,0,12"/>
-          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Audio channels" Classes="label"/><ComboBox x:Name="AudioChannelsBox" Grid.Column="1"><ComboBoxItem Content="32 (original)"/><ComboBoxItem Content="64 (fewer sounds cut off in big fights)"/><ComboBoxItem Content="128"/></ComboBox></Grid>
+          <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="Audio channels" Classes="label"/><ComboBox x:Name="AudioChannelsBox" Grid.Column="1"><ComboBoxItem Content="32 (original)"/><ComboBoxItem Content="64 (fewer sounds cut off in big fights)" ToolTip.ShowOnDisabled="True"/><ComboBoxItem Content="128" ToolTip.ShowOnDisabled="True"/></ComboBox></Grid>
           <CheckBox x:Name="AudioFilterCheck" Content="Audio filter (muffled sound behind walls / under water)" ToolTip.Tip="Turn off if sound randomly becomes muffled, underwater or far away."/>
         </StackPanel></Border>
       </StackPanel>
@@ -60,7 +62,8 @@
     <Border Grid.Row="1" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Padding="32,14">
       <DockPanel>
         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" Spacing="10" Margin="16,0,0,0">
-          <Button x:Name="RollbackButton" Content="Rollback last graphics change" IsEnabled="False" Click="Rollback_Click"/>
+          <Button x:Name="ResetButton" Content="Reset to Defaults" Click="Reset_Click"/>
+          <Button x:Name="RevertButton" Content="Revert settings" IsEnabled="False" Click="Revert_Click"/>
           <Button x:Name="ApplyButton" Content="Apply settings" Classes="primary" Click="Apply_Click"/>
         </StackPanel>
         <TextBlock x:Name="StatusText" Classes="status" VerticalAlignment="Center"/>

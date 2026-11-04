@@ -29,13 +29,16 @@
     <!-- Not on macOS: on Apple Silicon a package built on Windows with it crashes in HTTP code (AccessViolationException). -->
     <PublishReadyToRun Condition="!$(RuntimeIdentifier.StartsWith('osx'))">true</PublishReadyToRun>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- A launcher mostly waits: no background GC thread, and memory goes back to the system sooner. -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredPGO>false</TieredPGO>
     <!-- File metadata: unidentified binaries score worse with antivirus heuristics. -->
-    <Version>0.3.8</Version>
+    <Version>0.3.9</Version>
     <Company>Project Jacinto Community</Company>
-    <Product>Gears of War 3 Jacinto Launcher</Product>
-    <AssemblyTitle>Gears of War 3 Jacinto Launcher</AssemblyTitle>
-    <Description>Game launcher and settings manager for Gears of War 3: Jacinto.</Description>
-    <Copyright>Refresh, DryreL and the Project Jacinto community</Copyright>
+    <Product>Gears of War 3 Jacinto Multipatch Launcher</Product>
+    <AssemblyTitle>Gears of War 3 Jacinto Multipatch Launcher</AssemblyTitle>
+    <Description>Game launcher and settings manager for Gears of War 3: Jacinto v1.1.1.</Description>
+    <Copyright>DryreL, refresh50 and the Project Jacinto community</Copyright>
     <!-- From keys.local.props (not committed), or environment variables / CI secrets.
          Empty values turn the matching service off. -->
     <JacintoSentryDsn Condition="'$(JacintoSentryDsn)' == ''"></JacintoSentryDsn>
@@ -53,7 +56,9 @@
     <AvaloniaXaml Remove="multipatch\**\*;legacy-wpf\**\*;dist\**\*" />
     <None Remove="multipatch\**\*;tests\**\*;legacy-wpf\**\*;dist\**\*" />
     <EmbeddedResource Remove="multipatch\**\*;tests\**\*;legacy-wpf\**\*;dist\**\*" />
-    <AvaloniaResource Include="assets\**" />
+    <!-- The banner ships as an animated WebP made from the .webm, which stays out of the executable:
+         ffmpeg -i assets/ads/dryrel-banner-1920x180.webm -vf scale=1280:120:flags=lanczos -c:v libwebp_anim -loop 0 -quality 70 -an assets/ads/dryrel-banner.webp -->
+    <AvaloniaResource Include="assets\**" Exclude="assets\ads\*.webm" />
     <AvaloniaResource Include="app.ico" />
     <AvaloniaResource Include="changelog.txt" />
     <EmbeddedResource Include="languages.csv" LogicalName="languages.csv" />

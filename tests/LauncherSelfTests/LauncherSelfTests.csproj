@@ -20,5 +20,6 @@
     <Compile Include="..\..\JacintoLauncher\DiscordPresence.cs" Link="DiscordPresence.cs" />
     <Compile Include="..\..\JacintoLauncher\FixCatalog.cs" Link="FixCatalog.cs" />
     <Compile Include="..\..\JacintoLauncher\GameDisplay.cs" Link="GameDisplay.cs" />
+    <Compile Include="..\..\JacintoLauncher\InstallAudit.cs" Link="InstallAudit.cs" />
   </ItemGroup>
 </Project>

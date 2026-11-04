@@ -45,12 +45,9 @@ internal static class GameLayout
     /// <summary>On Linux and macOS the game is a Wine process, reported as "GearGame.exe".</summary>
     internal static bool GameRunning()
     {
-        foreach (var name in new[] { "GearGame", "GearGame.exe", "GearsOfWar3", "GearsOfWar3.exe" })
-        {
-            var processes = Process.GetProcessesByName(name);
-            try { if (processes.Length != 0) return true; }
-            finally { foreach (var process in processes) process.Dispose(); }
-        }
-        return false;
+        // One look at the process list: this runs every second.
+        var processes = Process.GetProcesses();
+        try { return processes.Any(process => process.ProcessName is "GearGame" or "GearGame.exe" or "GearsOfWar3" or "GearsOfWar3.exe"); }
+        finally { foreach (var process in processes) process.Dispose(); }
     }
 }

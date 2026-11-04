@@ -27,7 +27,7 @@ internal static class IntroSettings
     internal static void Apply(string[] directories, bool enabled, Action persist)
     {
         if (GameLayout.GameRunning())
-            throw new InvalidOperationException("Close the game before changing Skip Intro.");
+            throw new UserActionException("Close the game before changing Skip Intro.");
         var paths = directories.SelectMany(d => new[] { Path.Combine(d,"GearGame","Config","GearEngine.ini"), Path.Combine(d,"GearGame","Config","DefaultEngine.ini") }).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var before = new Dictionary<string, byte[]>();
         foreach (var path in paths)

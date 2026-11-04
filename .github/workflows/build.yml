@@ -28,6 +28,8 @@ jobs:
   publish:
     needs: test
     runs-on: ${{ matrix.os }}
+    env:
+      MAC_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12 != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -82,11 +84,22 @@ jobs:
         if: matrix.rid == 'win-x64' && startsWith(github.ref, 'refs/tags/') && vars.SIGNPATH_ORGANIZATION_ID != ''
         shell: bash
         run: rm -rf publish/win-x64 && mv signed publish/win-x64
+      # Developer ID signing, secure timestamp and Apple notarization. Runs once all five secrets exist; see DEVELOPMENT.md.
+      - name: Sign and notarize for macOS
+        if: startsWith(matrix.rid, 'osx') && startsWith(github.ref, 'refs/tags/') && env.MAC_SIGNING == 'true'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: bash tools/Sign-macOS.sh publish/${{ matrix.rid }}
       - name: Attest provenance
         if: startsWith(github.ref, 'refs/tags/')
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: publish/${{ matrix.rid }}/GoW3Jacinto_Launcher*
+          subject-path: publish/${{ matrix.rid }}/GoW3Jacinto_*
       - uses: actions/upload-artifact@v4
         with:
           name: GoW3Jacinto_Launcher-${{ matrix.rid }}
@@ -116,6 +129,8 @@ jobs:
             esac
             mkdir -p "package/$platform"
             cp -r "$rid" "package/$platform/Gears3_Multipatch_Launcher"
+            # Artifacts lose the executable bit.
+            [ "$platform" = Windows_x64 ] || chmod +x "package/$platform"/Gears3_Multipatch_Launcher/GoW3Jacinto_*
             cp packaging/INSTALL_TUTORIAL.txt changelog.txt languages.csv LICENSE "package/$platform/Gears3_Multipatch_Launcher/"
             (cd "package/$platform" && zip -qr "../../Gears3_Multipatch_Launcher_${GITHUB_REF_NAME}_$platform.zip" .)
           done

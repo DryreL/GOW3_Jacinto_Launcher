@@ -19,7 +19,7 @@ public partial class ControlsView : UserControl
     private readonly ObservableCollection<ControlBindingRow> rows = new();
     private string[] supportedKeys = Array.Empty<string>();
     private string[] reservedKeys = Array.Empty<string>();
-    private string? lastTransaction;
+    private readonly ChangeMarks marks = new();
     private double loadedSensitivity;
     private ControlBindingRow? capturing;
     private string? loaded;
@@ -35,6 +35,8 @@ public partial class ControlsView : UserControl
         DiagramHost.Content = new GamepadDiagram();
         LoadInput();
         SensitivitySlider.PropertyChanged += (_, change) => { if (change.Property == Avalonia.Controls.Primitives.RangeBase.ValueProperty) SensitivityValue.Text = ((int)SensitivitySlider.Value).ToString(CultureInfo.InvariantCulture); };
+        marks.Add(SensitivitySlider, SensitivityLabel);
+        marks.Changed += UpdateChanges;
         CaptureOverlay.AddHandler(KeyDownEvent, Capture_KeyDown, RoutingStrategies.Tunnel);
         BindingsList.AddHandler(KeyDownEvent, (_, e) => { if (e.Key == Key.Enter) { Change_Click(BindingsList, e); e.Handled = true; } }, RoutingStrategies.Tunnel);
         CaptureOverlay.AddHandler(PointerPressedEvent, Capture_Pointer, RoutingStrategies.Tunnel);
@@ -140,12 +142,18 @@ public partial class ControlsView : UserControl
         loadedSensitivity = double.TryParse(sensitivity, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? Math.Clamp(Math.Round(parsed), 1, 200) : 60;
         SensitivitySlider.Value = loadedSensitivity;
         SensitivityValue.Text = ((int)loadedSensitivity).ToString(CultureInfo.InvariantCulture);
+        marks.Capture();
         supportedKeys = ReadStrings(response["SupportedKeys"] as JsonArray);
         reservedKeys = ReadStrings(response["ReservedKeys"] as JsonArray);
         rows.Clear();
         if (response["Actions"] is not JsonArray actions) throw new InvalidOperationException("Multipatch returned no keyboard actions.");
         foreach (var action in actions.OfType<JsonObject>())
-            rows.Add(new ControlBindingRow(action["Command"]?.GetValue<string>() ?? "", L.T(action["Action"]?.GetValue<string>() ?? ""), action["Key"]?.GetValue<string>() ?? "", action["Default"]?.GetValue<string>() ?? ""));
+        {
+            var row = new ControlBindingRow(action["Command"]?.GetValue<string>() ?? "", L.T(action["Action"]?.GetValue<string>() ?? ""), action["Key"]?.GetValue<string>() ?? "", action["Default"]?.GetValue<string>() ?? "");
+            row.PropertyChanged += (_, _) => UpdateChanges();
+            rows.Add(row);
+        }
+        UpdateChanges();
         StatusText.Text = L.F("Loaded {0} bindings. Apply writes and verifies them; gamepad bindings are preserved.", rows.Count);
     }
 
@@ -195,11 +203,19 @@ public partial class ControlsView : UserControl
         if (conflict is not null) { StatusText.Text = L.F("{0} is already assigned to {1}.", key, conflict.Action); return; }
         row.Key = key;
         StatusText.Text = L.F("Pending change: {0} → {1}. Apply to write and verify it.", row.Action, key);
+        try
+        {
+            if (gameDir is not null && CheatKeys.Keys(gameDir, GameRunner.DocumentsRoot(MultipatchBridge.Config)).Contains(key))
+                StatusText.Text += " " + L.F("{0} is also a cheat hotkey, so the game does both. Turn the cheat hotkeys off on the Cheats page to avoid that.", key);
+        }
+        catch (Exception exception) when (exception is System.IO.IOException or UnauthorizedAccessException) { LauncherDiagnostics.Info("Cheat key check skipped: " + exception.Message); }
     }
 
-    private void Defaults_Click(object? sender, RoutedEventArgs e)
+    private async void Defaults_Click(object? sender, RoutedEventArgs e)
     {
+        if (TopLevel.GetTopLevel(this) is not MainWindow window || !await window.ConfirmAsync(L.T("RESET TO DEFAULTS"), L.T("Every key and the mouse sensitivity go back to their defaults. Nothing is saved until you press Apply."), L.T("Reset to Defaults"))) return;
         foreach (var row in rows) row.Key = row.Default;
+        SensitivitySlider.Value = 60;
         StatusText.Text = L.T("Default keyboard and mouse bindings selected. Apply to write them; gamepad bindings remain untouched.");
     }
 
@@ -214,8 +230,6 @@ public partial class ControlsView : UserControl
             var sensitivity = SensitivitySlider.Value != loadedSensitivity ? ((int)SensitivitySlider.Value).ToString(CultureInfo.InvariantCulture) : null;
             var directory = gameDir!;
             var response = await Task.Run(() => MultipatchBridge.ApplyControlsThroughMultipatch(directory, bindings, sensitivity));
-            lastTransaction = response["TransactionId"]?.GetValue<string>() ?? throw new InvalidOperationException("Multipatch did not return a controls transaction ID.");
-            RollbackButton.IsEnabled = true;
             LoadCurrent();
             StatusText.Text = L.T("Controls saved and verified. Restart the game.");
             Telemetry.Track("settings_applied", new Dictionary<string, object> { ["kind"] = "controls" });
@@ -228,22 +242,23 @@ public partial class ControlsView : UserControl
         finally { ApplyButton.IsEnabled = true; }
     }
 
-    private void Rollback_Click(object? sender, RoutedEventArgs e)
+    private async void Revert_Click(object? sender, RoutedEventArgs e)
     {
+        if (TopLevel.GetTopLevel(this) is not MainWindow window || !await window.ConfirmAsync(L.T("REVERT SETTINGS"), L.T("Your unsaved changes will be lost, and the saved settings come back."), L.T("Revert settings"))) return;
         try
         {
-            MultipatchBridge.RollbackControlsThroughMultipatch(gameDir!, lastTransaction);
-            lastTransaction = null;
-            RollbackButton.IsEnabled = false;
             LoadCurrent();
-            StatusText.Text = L.T("The latest controls change was restored.");
+            StatusText.Classes.Remove("error");
+            StatusText.Text = L.T("Unsaved changes were reverted.");
         }
         catch (Exception exception)
         {
-            LauncherDiagnostics.Error("Controls rollback failed", exception);
-            Fail(L.T("Controls rollback was not completed. ") + exception.Message);
+            LauncherDiagnostics.Error("Could not read Multipatch controls", exception);
+            Fail(L.T("Controls could not be read. See Diagnostics."));
         }
     }
+
+    private void UpdateChanges() => RevertButton.IsEnabled = marks.Dirty || rows.Any(row => row.Changed);
 
     private void Fail(string message) { StatusText.Classes.Add("error"); StatusText.Text = message; }
     private static string[] ReadStrings(JsonArray? array) => array?.Select(node => node?.GetValue<string>() ?? "").Where(value => value.Length != 0).ToArray() ?? Array.Empty<string>();
@@ -270,10 +285,22 @@ public partial class ControlsView : UserControl
 public sealed class ControlBindingRow : INotifyPropertyChanged
 {
     private string key;
-    internal ControlBindingRow(string command, string action, string key, string defaultKey) { Command = command; Action = action; this.key = key; Default = defaultKey; }
+    private readonly string saved;
+    internal ControlBindingRow(string command, string action, string key, string defaultKey) { Command = command; Action = action; this.key = key; saved = key; Default = defaultKey; }
     public string Command { get; }
     public string Action { get; }
     public string Default { get; }
-    public string Key { get => key; set { if (key == value) return; key = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Key))); } }
+    public bool Changed => key != saved;
+    public string ActionText => Action + (Changed ? " *" : "");
+    public string Key
+    {
+        get => key;
+        set
+        {
+            if (key == value) return;
+            key = value;
+            foreach (var name in new[] { nameof(Key), nameof(Changed), nameof(ActionText) }) PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
+    }
     public event PropertyChangedEventHandler? PropertyChanged;
 }

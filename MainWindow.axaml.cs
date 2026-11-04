@@ -33,8 +33,11 @@ public partial class MainWindow : Window
     private LauncherUpdate.Release? release;
     private Version? promptedVersion;
     private TrayIcon? tray;
+    private bool exiting, closedToTray;
+    private ToggleButton? shownNav;
     private bool hiddenInTray;
-    private bool lastBusy, offlineReady, steamReady, checking, installing, uninstalled, uninstallArmed;
+    private bool lastBusy, offlineReady, steamReady, checking, installing, uninstalled, background;
+    private TaskCompletionSource<bool>? confirmAnswer;
     private string? installedLauncher;
     private string? launcherStamp, gameStamp;
     private IInputElement? guideReturn;
@@ -48,6 +51,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         LauncherTheme.Changed += ApplyHomeArt;
         ApplyHomeArt();
+        StartAd();
         MultipatchBridge.Config = cfg;
         SettingsEngine.Screens = () => Screens.All.Select(s => (s.Bounds.X, s.Bounds.Y, s.Bounds.Right, s.Bounds.Bottom, s.IsPrimary)).ToArray();
         L.Initialize(cfg.LauncherLanguage);
@@ -56,29 +60,59 @@ public partial class MainWindow : Window
         Telemetry.Track("app_started", new Dictionary<string, object> { ["language"] = L.Current });
         L.Apply(this);
         VersionText.Text = "v" + LauncherUpdate.Current.ToString(3);
+        NewBadge.IsVisible = ReleasedRecently();
         TelemetryNotice.IsVisible = cfg.TelemetryEnabled && !cfg.TelemetryNoticeShown;
         LauncherDiagnostics.Info("Launcher started. Game directory: " + (gameDir ?? "<not found>"));
         ShowPage(HomeNav);
         ApplySidebar();
         _ = RefreshStateAsync();
-        monitor.Tick += (_, _) => { MonitorGame(); WatchSettingsFiles(); };
+        monitor.Tick += (_, _) => { MonitorGame(); if (!background) WatchSettingsFiles(); };
         monitor.Start();
         padTimer.Tick += (_, _) => PollGamepad();
         padTimer.Start();
         AddHandler(KeyDownEvent, Window_KeyDown, RoutingStrategies.Tunnel);
-        AddHandler(Button.ClickEvent, TrackClick, RoutingStrategies.Bubble, true);
         WarnIfWrongBuild();
         if (!cfg.HideSetupGuide) Opened += (_, _) => ShowGuide();
         _ = UpgradeIfNeededAsync();
         _ = CheckForUpdateAsync();
         ReportGameCrash();
+        _ = Task.Run(() => { try { SteamShortcut.TurnOffSteamInput(); } catch (Exception exception) { LauncherDiagnostics.Info("Steam Input was not turned off: " + exception.Message); } });
         onlineTimer.Tick += (_, _) => _ = RefreshOnlineAsync();
         onlineTimer.Start();
         _ = RefreshOnlineAsync();
         updateTimer.Tick += (_, _) => _ = CheckForUpdateAsync();
         updateTimer.Start();
-        Closed += (_, _) => { Telemetry.LeaveOnline(); monitor.Stop(); padTimer.Stop(); onlineTimer.Stop(); updateTimer.Stop(); tray?.Dispose(); padReader.Dispose(); };
-        Activated += (_, _) => { MonitorGame(); _ = RefreshStateAsync(); };
+        Closing += (_, args) =>
+        {
+            if (exiting || !cfg.CloseToTray) return;
+            args.Cancel = true;
+            closedToTray = true;
+            HideToTray();
+        };
+        Program.ShowRequested = () => Dispatcher.UIThread.Post(RestoreFromTray);
+        LauncherDiagnostics.ErrorShown = (operation, exception) => Dispatcher.UIThread.Post(() => ShowError(operation, exception));
+        Closed += (_, _) => { LauncherDiagnostics.ErrorShown = null; Telemetry.LeaveOnline(); monitor.Stop(); padTimer.Stop(); onlineTimer.Stop(); updateTimer.Stop(); tray?.Dispose(); padReader.Dispose(); };
+        Activated += (_, _) => { padTimer.Start(); MonitorGame(); _ = RefreshStateAsync(); };
+        Deactivated += (_, _) => padTimer.Stop();
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == WindowStateProperty) SetBackground(WindowState == WindowState.Minimized);
+    }
+
+    // Minimized or in the tray nobody sees the window: the big picture goes, and what is left is handed back to the system.
+    private void SetBackground(bool on)
+    {
+        if (background == on) return;
+        background = on;
+        monitor.Interval = TimeSpan.FromSeconds(on ? 5 : 1);
+        if (on) adTimer.Stop(); else if (AdBanner.IsVisible && adCodec?.FrameCount > 1) adTimer.Start();
+        if (!on) { ApplyHomeArt(); return; }
+        (HomeArt.Source as IDisposable)?.Dispose();
+        HomeArt.Source = null;
+        _ = Task.Run(LauncherMemory.Release);
     }
 
     private void MonitorGame()
@@ -90,7 +124,7 @@ public partial class MainWindow : Window
             {
                 lastBusy = busy;
                 ApplyButtons();
-                if (!busy) { DiscordPresence.Stop(); ReportGameCrash(); RestoreFromTray(); }
+                if (!busy) { DiscordPresence.Stop(); ReportGameCrash(); if (!closedToTray) RestoreFromTray(); }
             }
         }
         catch (Exception exception) { LauncherDiagnostics.Error("Game process monitoring failed", exception); PlayOfflineButton.IsEnabled = PlaySteamButton.IsEnabled = false; }
@@ -164,25 +198,73 @@ public partial class MainWindow : Window
         else if (PageHost.IsVisible && (moved || language != L.Current)) ShowPage(new[] { SettingsNav, ChangelogNav }.Concat(Pages).First(p => p.IsChecked == true));
     }
 
-    // Only the main actions: the free Aptabase plan counts every event. Play, Install, Uninstall and Apply have events of their own.
-    private static readonly HashSet<string> TrackedButtons = new(StringComparer.Ordinal)
-    {
-        "Choose game folder", "Verify game files", "Repair files", "Add to Steam", "Create Desktop Shortcut", "Create Save Backup", "Restore Selected Backup",
-        "Check for updates", "Update now", "Bug Report", "Discord server", "Nexus Mods page", "Show install guide"
-    };
+    // The free Aptabase plan counts every event, so only what says how the launcher is used: start, launches, installs, updates, applied settings and each page once a session.
+    private readonly HashSet<string> viewedPages = new(StringComparer.Ordinal);
 
-    private static void TrackClick(object? sender, RoutedEventArgs e)
+    // ---- store banner: an animated WebP made from the banner video. Avalonia shows only an image's first frame, so Skia decodes
+    // one frame per tick into the same bitmap: memory stays at one frame, and nothing runs while the banner is hidden or minimized.
+    private const string AdUrl = "https://dryrel.com/artworks/store/";
+    private SkiaSharp.SKCodecFrameInfo[] adFrameInfo = Array.Empty<SkiaSharp.SKCodecFrameInfo>();
+    private readonly DispatcherTimer adTimer = new();
+    private SkiaSharp.SKCodec? adCodec;
+    private SkiaSharp.SKImageInfo adInfo;
+    private Avalonia.Media.Imaging.WriteableBitmap? adBitmap;
+    private int adFrame;
+
+    private void StartAd()
     {
-        if (e.Source is not Button button || button is RepeatButton) return;
-        var shown = Avalonia.Automation.AutomationProperties.GetName(button) ?? button.Content as string ?? button.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault()?.Text;
-        if (shown is not null && L.EnglishOf(shown) is { } name && TrackedButtons.Contains(name)) Telemetry.Track("button_click", "button", name);
+        try
+        {
+            using var stream = Avalonia.Platform.AssetLoader.Open(InfoUi.Resource("assets/ads/dryrel-banner.webp"));
+            var memory = new MemoryStream(); stream.CopyTo(memory); memory.Position = 0;
+            adCodec = SkiaSharp.SKCodec.Create(memory) ?? throw new InvalidDataException("The banner could not be decoded.");
+            var info = new SkiaSharp.SKImageInfo(adCodec.Info.Width, adCodec.Info.Height, SkiaSharp.SKColorType.Bgra8888, SkiaSharp.SKAlphaType.Premul);
+            adInfo = info;
+            adBitmap = new Avalonia.Media.Imaging.WriteableBitmap(new PixelSize(info.Width, info.Height), new Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul);
+            adFrameInfo = adCodec.FrameInfo;
+            AdImage.Source = adBitmap;
+            ShowAdFrame(0);
+            if (adCodec.FrameCount < 2) return;
+            adTimer.Tick += (_, _) => ShowAdFrame((adFrame + 1) % adCodec.FrameCount);
+            adTimer.Start();
+        }
+        catch (Exception exception) { AdBanner.IsVisible = false; LauncherDiagnostics.Info("Store banner not shown: " + exception.Message); }
+    }
+
+    private void ShowAdFrame(int index)
+    {
+        if (adCodec is null || adBitmap is null) return;
+        var frames = adFrameInfo;
+        // A frame may draw only a part on top of the one before it, which the bitmap still holds.
+        var prior = frames.Length == 0 ? -1 : frames[index].RequiredFrame;
+        using (var target = adBitmap.Lock()) // Decoded straight into the shown bitmap: no copy.
+            adCodec.GetPixels(adInfo, target.Address, target.RowBytes, new SkiaSharp.SKCodecOptions(index, prior == index - 1 ? prior : -1));
+        adFrame = index;
+        AdImage.InvalidateVisual();
+        adTimer.Interval = TimeSpan.FromMilliseconds(frames.Length == 0 ? 33 : Math.Max(16, frames[index].Duration));
+    }
+
+    // UTM tags let the store's analytics count the visitors this launcher sends.
+    private async void Ad_Pressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        if (e.Source is Visual source && source.FindAncestorOfType<Button>(true) is not null) return; // The X.
+        Telemetry.Track("ad_click", "banner", "artworks_store");
+        await Launcher.LaunchUriAsync(new Uri(AdUrl + "?utm_source=gow3_jacinto_launcher&utm_medium=launcher&utm_campaign=home_banner&utm_content=v" + LauncherUpdate.Current.ToString(3)));
+    }
+
+    private void AdClose_Click(object? sender, RoutedEventArgs e)
+    {
+        // Only until the window is opened again: the choice is never saved.
+        AdBanner.IsVisible = false;
+        adTimer.Stop();
+        Telemetry.Track("ad_closed");
     }
 
     private void ApplyHomeArt()
     {
         // The Multi Patch Tool art is wide with its text in the middle, so it must not be cropped.
         var multipatch = LauncherTheme.Current == "blue";
-        using var art = Avalonia.Platform.AssetLoader.Open(new Uri("avares://GoW3Jacinto_Launcher/assets/" + (multipatch ? "multipatch.png" : "bg.jpg")));
+        using var art = Avalonia.Platform.AssetLoader.Open(InfoUi.Resource("assets/" + (multipatch ? "multipatch.png" : "bg.jpg")));
         (HomeArt.Source as IDisposable)?.Dispose();
         HomeArt.Source = new Avalonia.Media.Imaging.Bitmap(art);
         HomeArt.Stretch = multipatch ? Avalonia.Media.Stretch.Uniform : Avalonia.Media.Stretch.UniformToFill;
@@ -263,7 +345,7 @@ public partial class MainWindow : Window
         try
         {
             if (gameDir is null) throw new InvalidOperationException("Game installation was not detected.");
-            if (lifecycle.Observe(GameLayout.GameRunning(), DateTime.UtcNow)) throw new InvalidOperationException("The game is running or starting.");
+            if (lifecycle.Observe(GameLayout.GameRunning(), DateTime.UtcNow)) throw new UserActionException("The game is running or starting.");
             if (!await ConfirmMoviesAsync()) return;
             lifecycle.Begin(DateTime.UtcNow);
             lastBusy = true;
@@ -293,18 +375,23 @@ public partial class MainWindow : Window
         {
             if (tray is null)
             {
-                using var icon = Avalonia.Platform.AssetLoader.Open(new Uri("avares://GoW3Jacinto_Launcher/assets/icon256.png"));
+                using var icon = Avalonia.Platform.AssetLoader.Open(InfoUi.Resource("assets/icon256.png"));
                 var open = new NativeMenuItem(L.T("Open launcher"));
                 open.Click += (_, _) => RestoreFromTray();
                 var exit = new NativeMenuItem(L.T("Exit"));
-                exit.Click += (_, _) => Close();
-                tray = new TrayIcon { Icon = new WindowIcon(icon), ToolTipText = Title, Menu = new NativeMenu { open, exit } };
+                exit.Click += (_, _) => { exiting = true; Close(); };
+                var offline = new NativeMenuItem(L.T("Play Offline"));
+                offline.Click += (_, _) => { if (PlayOfflineButton.IsEnabled) _ = LaunchAsync(NetworkMode.Offline, "Offline"); else RestoreFromTray(); };
+                var steam = new NativeMenuItem(L.T("Play on Steam"));
+                steam.Click += (_, _) => { if (PlaySteamButton.IsEnabled) _ = LaunchAsync(NetworkMode.Steam, "Steam/JacintoNet"); else RestoreFromTray(); };
+                tray = new TrayIcon { Icon = new WindowIcon(icon), ToolTipText = Title, Menu = new NativeMenu { open, new NativeMenuItemSeparator(), offline, steam, new NativeMenuItemSeparator(), exit } };
                 tray.Clicked += (_, _) => RestoreFromTray();
                 TrayIcon.SetIcons(Avalonia.Application.Current!, new TrayIcons { tray });
             }
             tray.IsVisible = true;
             hiddenInTray = true;
             Hide();
+            SetBackground(true);
         }
         catch (Exception exception)
         {
@@ -316,8 +403,11 @@ public partial class MainWindow : Window
 
     private void RestoreFromTray()
     {
+        closedToTray = false;
+        if (!AdBanner.IsVisible && adCodec is not null) { AdBanner.IsVisible = true; if (adCodec?.FrameCount > 1) adTimer.Start(); }
         if (tray is not null) tray.IsVisible = false;
         if (hiddenInTray) { hiddenInTray = false; Show(); }
+        SetBackground(false);
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
     }
@@ -352,17 +442,23 @@ public partial class MainWindow : Window
         if (online is { } count) OnlineText.Text = L.F("{0} online", count.Online) + (count.Total is { } total ? "  |  " + L.F("{0} total", total) : "");
     }
 
-    private void Nav_Click(object? sender, RoutedEventArgs e) { if (sender is ToggleButton button) ShowPage(button); }
+    private void Nav_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton button) return;
+        if (button == shownNav) { button.IsChecked = true; return; } // Already open: a second click keeps the page and its unsaved edits.
+        ShowPage(button);
+    }
 
     // Pages are rebuilt on each visit, so they always show the files' current values.
     private void ShowPage(ToggleButton selected)
     {
-        Telemetry.Track("page_view", "page", selected.Name!.Replace("Nav", ""));
+        shownNav = selected;
+        if (viewedPages.Add(selected.Name!)) Telemetry.Track("page_view", "page", selected.Name!.Replace("Nav", ""));
         foreach (var nav in new[] { HomeNav, FeaturesNav, RecommendedNav, CheatsNav, AboutNav, FaqNav, CreditsNav, SettingsNav, ChangelogNav }) nav.IsChecked = nav == selected;
         PageHost.Content = selected == SettingsNav ? new SettingsPage(gameDir, () => new SettingsView(gameDir, cfg, exeDir, OnSettingsChanged, PickGameFolderAsync, ShowGuide))
             : selected == FeaturesNav ? new FeaturesPage()
             : selected == RecommendedNav ? new RecommendedPage()
-            : selected == CheatsNav ? new CheatsPage()
+            : selected == CheatsNav ? new CheatsPage(gameDir)
             : selected == AboutNav ? new AboutPage(gameDir, cfg, CheckForUpdateNowAsync)
             : selected == CreditsNav ? new TextPage("CREDITS", "assets/credits.txt")
             : selected == FaqNav ? new TextPage("FAQ", "assets/faq.txt")
@@ -419,11 +515,17 @@ public partial class MainWindow : Window
     private void WarnIfWrongBuild()
     {
         if (gameDir is null) return;
-        try { if (MultipatchInstaller.NamedOneOneTwo(gameDir)) ShowWrongBuild(); }
-        catch (IOException exception) { LauncherDiagnostics.Info("Game version check skipped: " + exception.Message); }
+        try
+        {
+            if (MultipatchInstaller.MissingGameFile(gameDir) is { } missing) ShowIncompleteGame(missing);
+            else if (MultipatchInstaller.NamedOneOneTwo(gameDir)) ShowWrongBuild();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { LauncherDiagnostics.Info("Game version check skipped: " + exception.Message); }
     }
 
-    private void ShowWrongBuild() { WrongBuildOverlay.IsVisible = true; WrongBuildOk.Focus(); }
+    private void ShowWrongBuild() => ShowGameProblem(L.T("WRONG GAME VERSION"), L.T("This looks like Project Jacinto v1.1.2. The Multipatch must be installed on v1.1.1: v1.1.1 is the campaign build, while v1.1.2 is a different build with Horde and multiplayer. Choose a v1.1.1 folder."));
+    private void ShowIncompleteGame(string missing) => ShowGameProblem(L.T("GAME FILES ARE MISSING"), L.F("{0} is missing, so this game folder is incomplete. Extract the whole game again, allow it in your antivirus, then choose its folder.", missing));
+    private void ShowGameProblem(string title, string text) { WrongBuildTitle.Text = title; WrongBuildText.Text = text; WrongBuildOverlay.IsVisible = true; WrongBuildOk.Focus(); }
     private void WrongBuild_Click(object? sender, RoutedEventArgs e) => WrongBuildOverlay.IsVisible = false;
 
     // A launcher update can bring new fixes; the game takes them at the next start, with its settings kept.
@@ -433,7 +535,7 @@ public partial class MainWindow : Window
         if (directory is null) return;
         try
         {
-            if (!await Task.Run(() => MultipatchInstaller.UpgradeAvailable(directory, exeDir))) return;
+            if (!await Task.Run(() => MultipatchInstaller.UpgradeAvailable(directory, exeDir))) { NoticeJacintoNet(directory); return; }
             if (GameLayout.GameRunning()) return; // Asked again at the next start.
             KeepOldPlayerName(directory);
             installing = true;
@@ -448,6 +550,7 @@ public partial class MainWindow : Window
             InstallLogScroll.IsVisible = false;
             Telemetry.Track("multipatch_update", new Dictionary<string, object> { ["result"] = "ok" });
             await RefreshStateAsync();
+            NoticeJacintoNet(directory);
             await CheckForUpdateAsync(); // A check that ran during this update did not ask.
         }
         catch (Exception exception)
@@ -459,6 +562,20 @@ public partial class MainWindow : Window
             StatusText.Text = L.T("The Multipatch could not be updated. See Diagnostics.");
             PathText.Text = exception.Message;
         }
+    }
+
+    // Once per JacintoNet build: co-op partners need the same one. The first build a player has is not news.
+    private void NoticeJacintoNet(string game)
+    {
+        try
+        {
+            if (NetworkMode.PayloadHash(game) is not { } current || current == cfg.JacintoNetSeen) return;
+            var updated = NetworkMode.Updated(cfg.JacintoNetSeen, current);
+            cfg.JacintoNetSeen = current;
+            cfg.Save(exeDir);
+            if (updated) ShowGameProblem(L.T("JACINTONET WAS UPDATED"), L.T("The part of the Multipatch that makes Steam co-op work has a new version. If you play co-op, your friend must update too, or you may not be able to play together."));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { LauncherDiagnostics.Info("JacintoNet version check skipped: " + exception.Message); }
     }
 
     // An old package kept the name in its launcher's settings, which this launcher's replace.
@@ -475,7 +592,19 @@ public partial class MainWindow : Window
     private async void Install_Click(object? sender, RoutedEventArgs e)
     {
         if (gameDir is null) return;
-        if (MultipatchInstaller.NotOneOneOne(gameDir)) { ShowWrongBuild(); return; }
+        try
+        {
+            if (MultipatchInstaller.MissingGameFile(gameDir) is { } missing) { ShowIncompleteGame(missing); return; }
+            if (MultipatchInstaller.NamedOneOneTwo(gameDir)) { ShowWrongBuild(); return; }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            LauncherDiagnostics.Info("Game version check failed: " + exception.Message);
+            StatusText.Text = L.T("Installation did not complete.");
+            PathText.Text = exception.Message;
+            PathText.IsVisible = true;
+            return;
+        }
         var directory = gameDir;
         var gamepad = InputChoiceBox.SelectedIndex == 1;
         var subtitle = new[] { "big", "normal", "default" }[Math.Max(0, SubtitleChoiceBox.SelectedIndex)];
@@ -510,6 +639,7 @@ public partial class MainWindow : Window
             PathText.Text = L.T("Continue opens the launcher from the game folder. You can then delete this download.");
             InstallButton.IsVisible = ChooseFolderButton.IsVisible = InputChoicePanel.IsVisible = false;
             ContinueButton.IsVisible = true;
+            await ShowAuditAsync();
         }
         catch (Exception exception)
         {
@@ -526,16 +656,98 @@ public partial class MainWindow : Window
     private void Continue_Click(object? sender, RoutedEventArgs e)
     {
         if (installedLauncher is null) return;
-        Process.Start(new ProcessStartInfo(installedLauncher) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(installedLauncher)! })?.Dispose();
+        try { Process.Start(new ProcessStartInfo(installedLauncher) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(installedLauncher)! })?.Dispose(); }
+        catch (System.ComponentModel.Win32Exception exception)
+        {
+            // Usually an antivirus that took the copy. The game is installed; this launcher stays open and works.
+            LauncherDiagnostics.Error("Installed launcher did not start", exception);
+            PathText.Text = L.T("The launcher in the game folder could not be started. Check your antivirus, then open it from JacintoLauncher\\Launcher.");
+            return;
+        }
+        exiting = true;
         Close();
     }
 
-    // Two clicks instead of a dialog: dialogs are awkward with a gamepad and in Steam gaming mode.
+    private const string PassIcon = "M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z";
+    private const string FailIcon = "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z";
+    private IInputElement? auditReturn;
+
+    /// <summary>Runs the installation audit and shows each check, with the reason for any that failed.</summary>
+    internal async Task ShowAuditAsync()
+    {
+        if (gameDir is not { } directory) return;
+        auditReturn = FocusManager?.GetFocusedElement();
+        AuditList.Children.Clear();
+        AuditSummary.Text = L.T("Checking the installation...");
+        AuditOverlay.IsVisible = true;
+        AuditClose.Focus(NavigationMethod.Directional);
+        var findings = await Task.Run(() => InstallAudit.Run(directory));
+        var failed = findings.Count(f => f.Problem is not null);
+        AuditSummary.Text = failed == 0 ? L.T("Everything was applied as chosen.") : L.F("{0} problem(s) found. Each one says what is wrong and where.", failed);
+        foreach (var area in findings.GroupBy(f => f.Area))
+        {
+            AuditList.Children.Add(new TextBlock { Text = area.Key.ToUpperInvariant(), FontWeight = Avalonia.Media.FontWeight.Bold, FontSize = 12, Margin = new Thickness(0, 8, 0, 0), Foreground = (Avalonia.Media.IBrush)this.FindResource("MutedBrush")! });
+            foreach (var finding in area)
+            {
+                var ok = finding.Problem is null;
+                var text = new StackPanel { Children = { new TextBlock { Text = finding.Item, TextWrapping = Avalonia.Media.TextWrapping.Wrap, FontWeight = Avalonia.Media.FontWeight.SemiBold } } };
+                if (!ok) text.Children.Add(new TextBlock { Text = finding.Problem, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Classes = { "error" } });
+                var icon = new PathIcon { Width = 14, Height = 14, Margin = new Thickness(0, 3, 10, 0), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top, Data = Avalonia.Media.StreamGeometry.Parse(ok ? PassIcon : FailIcon) };
+                icon.Classes.Set("error", !ok);
+                DockPanel.SetDock(icon, Dock.Left);
+                AuditList.Children.Add(new DockPanel { Children = { icon, text } });
+            }
+        }
+        LauncherDiagnostics.Info($"Installation audit: {findings.Count} check(s), {failed} problem(s). " + string.Join(" | ", findings.Where(f => f.Problem is not null).Select(f => f.Item + ": " + f.Problem)));
+    }
+
+    private void AuditClose_Click(object? sender, RoutedEventArgs e) { AuditOverlay.IsVisible = false; auditReturn?.Focus(); }
+
+    /// <summary>Every launcher error opens this, with the details to copy and the log folder. Refusals the player can fix already say so where they happen.</summary>
+    private void ShowError(string operation, Exception exception)
+    {
+        if (exception is UserActionException) return;
+        var details = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}  {operation}{Environment.NewLine}{exception}";
+        if (ErrorOverlay.IsVisible) { ErrorDetails.Text = details + Environment.NewLine + Environment.NewLine + ErrorDetails.Text; return; } // One action can log twice; keep both.
+        errorReturn = FocusManager?.GetFocusedElement();
+        ErrorSummary.Text = L.T(operation) + ": " + exception.Message;
+        ErrorDetails.Text = $"v{LauncherUpdate.Current.ToString(3)}  {System.Runtime.InteropServices.RuntimeInformation.OSDescription}{Environment.NewLine}{details}";
+        ErrorOverlay.IsVisible = true;
+        ErrorClose.Focus(NavigationMethod.Directional);
+    }
+
+    private IInputElement? errorReturn;
+    private void ErrorClose_Click(object? sender, RoutedEventArgs e) { ErrorOverlay.IsVisible = false; errorReturn?.Focus(); }
+    private void ErrorLogs_Click(object? sender, RoutedEventArgs e) => LauncherDiagnostics.OpenFolder();
+
+    private async void ErrorCopy_Click(object? sender, RoutedEventArgs e)
+    {
+        if (Clipboard is not { } clipboard) return;
+        await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard, ErrorSummary.Text + Environment.NewLine + Environment.NewLine + ErrorDetails.Text);
+        ErrorCopy.Content = L.T("Copied");
+    }
+
+    /// <summary>Asks in the window, like every other overlay. False when Cancel or Esc is pressed.</summary>
+    internal async Task<bool> ConfirmAsync(string title, string text, string yes)
+    {
+        ConfirmTitle.Text = title; ConfirmText.Text = text; ConfirmYes.Content = yes;
+        var returnTo = FocusManager?.GetFocusedElement();
+        ConfirmOverlay.IsVisible = true;
+        ConfirmNo.Focus(NavigationMethod.Directional);
+        confirmAnswer = new TaskCompletionSource<bool>();
+        var answer = await confirmAnswer.Task;
+        ConfirmOverlay.IsVisible = false;
+        returnTo?.Focus();
+        return answer;
+    }
+
+    private void ConfirmYes_Click(object? sender, RoutedEventArgs e) => confirmAnswer?.TrySetResult(true);
+    private void ConfirmNo_Click(object? sender, RoutedEventArgs e) => confirmAnswer?.TrySetResult(false);
+
     private async void Uninstall_Click(object? sender, RoutedEventArgs e)
     {
         if (gameDir is null) return;
-        if (!uninstallArmed) { uninstallArmed = true; UninstallButton.Content = L.T("Click again to confirm"); return; }
-        uninstallArmed = false;
+        if (!await ConfirmAsync(L.T("UNINSTALL MULTIPATCH"), L.T("This restores the original game files and removes the launcher from the game folder. Your saves are kept."), L.T("Uninstall Multipatch"))) return;
         UninstallButton.IsEnabled = false;
         var directory = gameDir;
         InstallLog.Text = "";
@@ -554,7 +766,6 @@ public partial class MainWindow : Window
             StatusText.Text = L.T("An error occurred. See Diagnostics.");
             PathText.Text = exception.Message;
         }
-        UninstallButton.Content = L.T("Uninstall Multipatch");
         UninstallButton.IsEnabled = true;
         ApplyButtons();
     }
@@ -604,6 +815,19 @@ public partial class MainWindow : Window
         return LauncherUpdate.IsNewer(release) ? L.F("Version v{0} is available. Update it on Home.", release.Version.ToString(3)) : L.F("You have the latest version (v{0}).", LauncherUpdate.Current.ToString(3));
     }
 
+    /// <summary>True on the day this version came out and the day after, by its date in the bundled changelog.</summary>
+    private static bool ReleasedRecently()
+    {
+        try
+        {
+            using var reader = new StreamReader(Avalonia.Platform.AssetLoader.Open(InfoUi.Resource("changelog.txt")));
+            var match = System.Text.RegularExpressions.Regex.Match(reader.ReadToEnd(), @"(?m)^v" + System.Text.RegularExpressions.Regex.Escape(LauncherUpdate.Current.ToString(3)) + @" \((\d{1,2} \w{3} \d{4})");
+            return match.Success && DateTime.TryParseExact(match.Groups[1].Value, "d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var released)
+                && (DateTime.Now.Date - released.Date).TotalDays is >= 0 and <= 1;
+        }
+        catch (Exception exception) when (exception is IOException or FileNotFoundException) { return false; }
+    }
+
     private void ShowRelease(LauncherUpdate.Release release)
     {
         var newer = LauncherUpdate.IsNewer(release);
@@ -643,6 +867,7 @@ public partial class MainWindow : Window
         {
             await LauncherUpdate.DownloadAndStartAsync(release, exeDir, percent => Dispatcher.UIThread.Post(() => NewsTitle.Text = L.F("Downloading update... {0}%", percent)));
             Telemetry.Track("launcher_update", new Dictionary<string, object> { ["version"] = release.Version.ToString() });
+            exiting = true;
             Close();
         }
         catch (Exception exception)
@@ -673,7 +898,7 @@ public partial class MainWindow : Window
         focused.RaiseEvent(new KeyEventArgs { RoutedEvent = KeyDownEvent, Key = key, Source = focused });
     }
 
-    private Control? OpenOverlay => new Control[] { NameOverlay, WrongBuildOverlay, UpdateOverlay, MovieOverlay, GuideOverlay }.FirstOrDefault(o => o.IsVisible);
+    private Control? OpenOverlay => new Control[] { ErrorOverlay, ConfirmOverlay, AuditOverlay, NameOverlay, WrongBuildOverlay, UpdateOverlay, MovieOverlay, GuideOverlay }.FirstOrDefault(o => o.IsVisible);
 
     // Everything the focus can land on, in reading order. A list counts as one stop: it moves inside itself.
     private static List<Control> Stops(Control root)
@@ -803,7 +1028,10 @@ public partial class MainWindow : Window
         else if (e.Key is Key.Left or Key.Right) MoveHorizontal(focused, e.Key == Key.Right ? 1 : -1, e);
         else if (e.Key == Key.Escape)
         {
-            if (UpdateOverlay.IsVisible) UpdateOverlay.IsVisible = false;
+            if (ErrorOverlay.IsVisible) ErrorClose_Click(sender, e);
+            else if (ConfirmOverlay.IsVisible) confirmAnswer?.TrySetResult(false);
+            else if (UpdateOverlay.IsVisible) UpdateOverlay.IsVisible = false;
+            else if (AuditOverlay.IsVisible) AuditClose_Click(sender, e);
             else if (WrongBuildOverlay.IsVisible) WrongBuildOverlay.IsVisible = false;
             else if (MovieOverlay.IsVisible) movieAnswer?.TrySetResult(false);
             else if (NameOverlay.IsVisible) NameCancel_Click(sender, e);

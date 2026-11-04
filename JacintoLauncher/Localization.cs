@@ -23,13 +23,18 @@ internal static class L
     internal static string Current { get; private set; } = "en";
 
     // The table ships inside the launcher. A languages.csv beside it is read on top, so anyone can fix a text or add a language by adding a column.
+    // A languages-<code>.csv beside it (key, en and one language, as tools/l10n_audit.py --new writes it) adds a language without touching the big table.
     private static Language[] Load()
     {
         var languages = new List<Language>();
         using (var shipped = typeof(L).Assembly.GetManifestResourceStream(ExternalFile))
             if (shipped is not null) using (var reader = new StreamReader(shipped)) Merge(reader.ReadToEnd(), languages);
         var external = Path.Combine(AppContext.BaseDirectory, ExternalFile);
-        try { if (File.Exists(external)) Merge(File.ReadAllText(external), languages); }
+        try
+        {
+            if (File.Exists(external)) Merge(File.ReadAllText(external), languages);
+            foreach (var single in Directory.GetFiles(AppContext.BaseDirectory, "languages-*.csv").Order(StringComparer.Ordinal)) Merge(File.ReadAllText(single), languages);
+        }
         catch (IOException exception) { LauncherDiagnostics.Info("languages.csv could not be read: " + exception.Message); }
         return languages.Count == 0 ? new[] { new Language("en", "English") } : languages.ToArray();
     }

@@ -61,6 +61,11 @@ internal static class PlayerIdentity
         var output = new byte[skip + body.Length];
         Array.Copy(bytes, output, skip);
         body.CopyTo(output, skip);
-        File.WriteAllBytes(path, output);
+        try
+        {
+            File.SetAttributes(path, File.GetAttributes(path) & ~FileAttributes.ReadOnly);
+            File.WriteAllBytes(path, output);
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException) { LauncherDiagnostics.Info("Player name not written to " + path + ": " + exception.Message); }
     }
 }

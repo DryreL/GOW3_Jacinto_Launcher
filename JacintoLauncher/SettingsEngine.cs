@@ -156,7 +156,7 @@ internal sealed class SettingsEngine
         if (s["Disabled"] is not JsonArray) throw new ArgumentException("Disabled must be a JSON array.");
         foreach (var effect in Disabled(s)) if (!Effects.ContainsKey(effect)) throw new ArgumentException("Unsupported disabled effect: " + effect);
         if (!IsInt(s, "AudioChannels") || !new[] { 32, 64, 128 }.Contains(Num(s, "AudioChannels"))) throw new ArgumentException("AudioChannels must be 32, 64 or 128.");
-        foreach (var name in new[] { "MusicVolume", "EffectsVolume", "DialogueVolume" }) if (!IsInt(s, name) || Num(s, name) is < 0 or > 100) throw new ArgumentException(name + " must be an integer from 0 to 100.");
+        foreach (var name in new[] { "MasterVolume", "MusicVolume", "EffectsVolume", "DialogueVolume" }) if (!IsInt(s, name) || Num(s, name) is < 0 or > 100) throw new ArgumentException(name + " must be an integer from 0 to 100.");
         if (!new[] { "big", "normal", "default" }.Contains(Str(s, "SubtitleSize"), StringComparer.OrdinalIgnoreCase)) throw new ArgumentException("SubtitleSize must be big, normal or default.");
     }
 
@@ -164,7 +164,7 @@ internal sealed class SettingsEngine
     private static JsonObject AddAudioDefaults(JsonObject s)
     {
         s["AudioFilter"] ??= true; s["AudioChannels"] ??= 32; s["DisableRunShake"] ??= true;
-        s["MusicVolume"] ??= 100; s["EffectsVolume"] ??= 100; s["DialogueVolume"] ??= 100;
+        s["MasterVolume"] ??= 100; s["MusicVolume"] ??= 100; s["EffectsVolume"] ??= 100; s["DialogueVolume"] ??= 100;
         s["SubtitleSize"] ??= "big"; s["HordeBeast"] ??= false;
         return s;
     }
@@ -182,9 +182,11 @@ internal sealed class SettingsEngine
     {
         var commands = new StringBuilder();
         if (!On(s, "AudioFilter")) commands.Append("DisableLPF\r\n");
+        // Master scales every group, so the game has one class list to set and no class is set twice.
+        var master = Num(s, "MasterVolume") / 100.0;
         foreach (var (setting, classes) in VolumeGroups)
-            if (Num(s, setting) != 100)
-                foreach (var (name, stock) in classes) commands.Append(CultureInfo.InvariantCulture, $"ModifySoundClass {name} Vol={stock * Num(s, setting) / 100:0.###}\r\n");
+            if (Num(s, setting) != 100 || master != 1)
+                foreach (var (name, stock) in classes) commands.Append(CultureInfo.InvariantCulture, $"ModifySoundClass {name} Vol={stock * Num(s, setting) / 100 * master:0.###}\r\n");
         return commands.ToString();
     }
 
@@ -228,10 +230,10 @@ internal sealed class SettingsEngine
 
     private void AssertPreflight(string kind, bool writing = true)
     {
-        if (!File.Exists(Path.Combine(binariesDir, "GearGame.exe"))) throw new FileNotFoundException("Game executable is missing from the selected directory.");
-        if (GameLayout.StartScript(root) is null) throw new FileNotFoundException("Multipatch start script is missing.");
+        if (!File.Exists(Path.Combine(binariesDir, "GearGame.exe"))) throw new UserActionException("Binaries\\Win64\\GearGame.exe is missing from the game folder. Choose the folder that has Binaries and GearGame in it.");
+        if (GameLayout.StartScript(root) is null) throw new UserActionException("Gears3_Start_Game.bat is missing from the game folder. Install the Multipatch on the Home screen.");
         if (!File.Exists(graphicsPath)) throw new FileNotFoundException("Multipatch graphics.json is missing.");
-        if (writing && GameLayout.GameRunning()) throw new InvalidOperationException("Close GearGame before applying settings.");
+        if (writing && GameLayout.GameRunning()) throw new UserActionException("Close GearGame before applying settings.");
         var journalPath = Path.Combine(filesDir, "installation-state.json");
         if (File.Exists(journalPath))
         {
@@ -483,7 +485,8 @@ internal sealed class SettingsEngine
         Set("SystemSettings", "SpeedTreeLeaves", Bool(foliage != "low")); Set("SystemSettings", "SpeedTreeFronds", Bool(foliage is "high" or "ultra"));
         Set("SystemSettings", "MaxAnisotropy", Num(s, "Anisotropy").ToString(CultureInfo.InvariantCulture));
         var aa = Str(s, "AntiAliasing").ToLowerInvariant();
-        Set("SystemSettings", "bAllowTemporalAA", Bool(aa == "fxaa")); Set("SystemSettings", "bAllowD3D9MSAA", Bool(aa.StartsWith("msaa", StringComparison.Ordinal))); Set("SystemSettings", "MaxMultiSamples", aa switch { "msaa2x" => "2", "msaa4x" => "4", _ => "1" });
+        // Temporal AA stays off: with it on, the engine asserts as soon as a level draws a reflection probe.
+        Set("SystemSettings", "bAllowTemporalAA", Bool(false)); Set("SystemSettings", "bAllowD3D9MSAA", Bool(aa.StartsWith("msaa", StringComparison.Ordinal))); Set("SystemSettings", "MaxMultiSamples", aa switch { "msaa2x" => "2", "msaa4x" => "4", _ => "1" });
         Set("SystemSettings", "AmbientOcclusion", Bool(On(s, "AmbientOcclusion")));
         var disabled = Disabled(s);
         foreach (var (effect, keys) in Effects) foreach (var key in keys) Set("SystemSettings", key, Bool(!disabled.Contains(effect, StringComparer.OrdinalIgnoreCase)));
@@ -508,6 +511,12 @@ internal sealed class SettingsEngine
         var refresh = Num(s, "RefreshRate").ToString(CultureInfo.InvariantCulture);
         var disabled = Disabled(s);
         var allMatch = true;
+        var managed = MultipatchInstaller.Managed(root);
+        var fontName = managed ? SubtitleFonts.FontName(Language(s), Str(s, "SubtitleSize").ToLowerInvariant(), On(s, "ForceWarfareFonts")) : null;
+        // What the audit shows: the file, the setting, what is there and what should be.
+        var problems = new JsonArray();
+        void Miss(string file, string key, string? actual, string expected) =>
+            problems.Add(new JsonObject { ["File"] = Path.GetRelativePath(root, file), ["Key"] = key, ["Actual"] = actual, ["Expected"] = expected });
         var states = new JsonArray();
         var primaryEngine = File.Exists(Path.Combine(docsConfig, "GearEngine.ini")) ? Path.Combine(docsConfig, "GearEngine.ini") : Path.Combine(configDir, "GearEngine.ini");
         foreach (var path in EngineFiles())
@@ -516,29 +525,31 @@ internal sealed class SettingsEngine
             var isPrimary = SamePath(path, primaryEngine);
             var fileMatch = true;
             var resX = Regex.Match(text, @"(?m)^ResX=(\d+)"); var resY = Regex.Match(text, @"(?m)^ResY=(\d+)");
-            var rows = new (string? Actual, string Expected)[]
+            var rows = new (string Key, string? Actual, string Expected)[]
             {
-                (resX.Success && resY.Success ? resX.Groups[1].Value + "x" + resY.Groups[1].Value : "", rx + "x" + ry),
-                (GetIniValue(text, "SystemSettings", "Fullscreen"), Bool(On(s, "Fullscreen"))), (GetIniValue(text, "SystemSettings", "UseVsync"), Bool(On(s, "VSync"))),
-                (GetIniValue(text, "Engine.Engine", "MaxSmoothedFrameRate"), limited ? Num(s, "FpsLimit").ToString(CultureInfo.InvariantCulture) : "300"), (GetIniValue(text, "Engine.Engine", "bSmoothFrameRate"), Bool(limited)),
-                (GetIniValue(text, "SystemSettings", "MaxMultiSamples"), aa switch { "msaa2x" => "2", "msaa4x" => "4", _ => "1" }), (GetIniValue(text, "SystemSettings", "bAllowD3D9MSAA"), Bool(aa.StartsWith("msaa", StringComparison.Ordinal))), (GetIniValue(text, "SystemSettings", "bAllowTemporalAA"), Bool(aa == "fxaa")),
-                (GetIniValue(text, "SystemSettings", "MaxAnisotropy"), Num(s, "Anisotropy").ToString(CultureInfo.InvariantCulture)), (GetIniValue(text, "SystemSettings", "AmbientOcclusion"), Bool(On(s, "AmbientOcclusion"))),
-                (GetIniValue(text, "WinDrv.WindowsClient", "MinAllowableRefreshRate"), refresh), (GetIniValue(text, "WinDrv.WindowsClient", "MaxAllowableRefreshRate"), refresh),
-                (GetIniValue(text, "SystemSettings", "DetailMode"), q[0]), (GetIniValue(text, "SystemSettings", "MaxDrawDistanceScale"), q[1]), (GetIniValue(text, "SystemSettings", "SkeletalMeshLODBias"), q[2]), (GetIniValue(text, "SystemSettings", "StaticMeshLODBias"), q[3]), (GetIniValue(text, "SystemSettings", "bUseMaxQualityMode"), "False"),
-                (GetIniValue(text, "SystemSettings", "MinShadowResolution"), shadow[0]), (GetIniValue(text, "SystemSettings", "MaxShadowResolution"), shadow[1]), (GetIniValue(text, "SystemSettings", "MaxWholeSceneDominantShadowResolution"), shadow[2]), (GetIniValue(text, "SystemSettings", "ShadowFilterQualityBias"), shadow[3]), (GetIniValue(text, "SystemSettings", "bAllowWholeSceneDominantShadows"), shadow[4]),
-                (GetIniValue(text, "SystemSettings", "SpeedTreeLeaves"), Bool(foliage != "low")), (GetIniValue(text, "SystemSettings", "SpeedTreeFronds"), Bool(foliage is "high" or "ultra")), (GetIniValue(text, "SystemSettings", "OnlyStreamInTextures"), Bool(hdd)), (GetIniValue(text, "Engine.Engine", "bEnableMipLevelFading"), Bool(hdd))
+                ("Resolution", resX.Success && resY.Success ? resX.Groups[1].Value + "x" + resY.Groups[1].Value : "", rx + "x" + ry),
+                ("Fullscreen", GetIniValue(text, "SystemSettings", "Fullscreen"), Bool(On(s, "Fullscreen"))), ("UseVsync", GetIniValue(text, "SystemSettings", "UseVsync"), Bool(On(s, "VSync"))),
+                ("MaxSmoothedFrameRate", GetIniValue(text, "Engine.Engine", "MaxSmoothedFrameRate"), limited ? Num(s, "FpsLimit").ToString(CultureInfo.InvariantCulture) : "300"), ("bSmoothFrameRate", GetIniValue(text, "Engine.Engine", "bSmoothFrameRate"), Bool(limited)),
+                ("MaxMultiSamples", GetIniValue(text, "SystemSettings", "MaxMultiSamples"), aa switch { "msaa2x" => "2", "msaa4x" => "4", _ => "1" }), ("bAllowD3D9MSAA", GetIniValue(text, "SystemSettings", "bAllowD3D9MSAA"), Bool(aa.StartsWith("msaa", StringComparison.Ordinal))), ("bAllowTemporalAA", GetIniValue(text, "SystemSettings", "bAllowTemporalAA"), Bool(false)),
+                ("MaxAnisotropy", GetIniValue(text, "SystemSettings", "MaxAnisotropy"), Num(s, "Anisotropy").ToString(CultureInfo.InvariantCulture)), ("AmbientOcclusion", GetIniValue(text, "SystemSettings", "AmbientOcclusion"), Bool(On(s, "AmbientOcclusion"))),
+                ("MinAllowableRefreshRate", GetIniValue(text, "WinDrv.WindowsClient", "MinAllowableRefreshRate"), refresh), ("MaxAllowableRefreshRate", GetIniValue(text, "WinDrv.WindowsClient", "MaxAllowableRefreshRate"), refresh),
+                ("DetailMode", GetIniValue(text, "SystemSettings", "DetailMode"), q[0]), ("MaxDrawDistanceScale", GetIniValue(text, "SystemSettings", "MaxDrawDistanceScale"), q[1]), ("SkeletalMeshLODBias", GetIniValue(text, "SystemSettings", "SkeletalMeshLODBias"), q[2]), ("StaticMeshLODBias", GetIniValue(text, "SystemSettings", "StaticMeshLODBias"), q[3]), ("bUseMaxQualityMode", GetIniValue(text, "SystemSettings", "bUseMaxQualityMode"), "False"),
+                ("MinShadowResolution", GetIniValue(text, "SystemSettings", "MinShadowResolution"), shadow[0]), ("MaxShadowResolution", GetIniValue(text, "SystemSettings", "MaxShadowResolution"), shadow[1]), ("MaxWholeSceneDominantShadowResolution", GetIniValue(text, "SystemSettings", "MaxWholeSceneDominantShadowResolution"), shadow[2]), ("ShadowFilterQualityBias", GetIniValue(text, "SystemSettings", "ShadowFilterQualityBias"), shadow[3]), ("bAllowWholeSceneDominantShadows", GetIniValue(text, "SystemSettings", "bAllowWholeSceneDominantShadows"), shadow[4]),
+                ("SpeedTreeLeaves", GetIniValue(text, "SystemSettings", "SpeedTreeLeaves"), Bool(foliage != "low")), ("SpeedTreeFronds", GetIniValue(text, "SystemSettings", "SpeedTreeFronds"), Bool(foliage is "high" or "ultra")), ("OnlyStreamInTextures", GetIniValue(text, "SystemSettings", "OnlyStreamInTextures"), Bool(hdd)), ("bEnableMipLevelFading", GetIniValue(text, "Engine.Engine", "bEnableMipLevelFading"), Bool(hdd))
             };
-            foreach (var (actual, expected) in rows)
+            foreach (var (key, actual, expected) in rows)
             {
-                if (actual is null) { if (isPrimary) { allMatch = false; fileMatch = false; } }
-                else if (!Same(actual, expected)) { allMatch = false; fileMatch = false; }
+                if (actual is null) { if (isPrimary) { allMatch = false; fileMatch = false; Miss(path, key, null, expected); } }
+                else if (!Same(actual, expected)) { allMatch = false; fileMatch = false; Miss(path, key, actual, expected); }
             }
             // A secondary file may simply not have these keys until the first Apply.
-            foreach (var (key, whenHdd, whenSsd) in StreamingRows) if (GetIniValue(text, "TextureStreaming", key) is var value && (value is not null || isPrimary) && !Same(value, hdd ? whenHdd : whenSsd)) allMatch = false;
-            foreach (var (effect, keys) in Effects) foreach (var key in keys) if (GetIniValue(text, "SystemSettings", key) is var value && (value is not null || disabled.Contains(effect, StringComparer.OrdinalIgnoreCase)) && !Same(value, Bool(!disabled.Contains(effect, StringComparer.OrdinalIgnoreCase)))) allMatch = false;
+            foreach (var (key, whenHdd, whenSsd) in StreamingRows) if (GetIniValue(text, "TextureStreaming", key) is var value && (value is not null || isPrimary) && !Same(value, hdd ? whenHdd : whenSsd)) { allMatch = false; Miss(path, key, value, hdd ? whenHdd : whenSsd); }
+            foreach (var (effect, keys) in Effects) foreach (var key in keys) if (GetIniValue(text, "SystemSettings", key) is var value && (value is not null || disabled.Contains(effect, StringComparer.OrdinalIgnoreCase)) && !Same(value, Bool(!disabled.Contains(effect, StringComparer.OrdinalIgnoreCase)))) { allMatch = false; Miss(path, key, value, Bool(!disabled.Contains(effect, StringComparer.OrdinalIgnoreCase))); }
             var textureRows = Regex.Matches(text, @"(?m)^TEXTUREGROUP_(?:World|WorldNormalMap|Character|CharacterNormalMap|Weapon|WeaponNormalMap|Vehicle|VehicleNormalMap)=\([^\r\n]*LODBias=-?\d+[^\r\n]*\)");
-            foreach (Match row in textureRows) if (Regex.Match(row.Value, @"LODBias=(-?\d+)").Groups[1].Value != lod) { allMatch = false; fileMatch = false; }
-            if (isPrimary && textureRows.Count == 0) { allMatch = false; fileMatch = false; }
+            foreach (Match row in textureRows) if (Regex.Match(row.Value, @"LODBias=(-?\d+)").Groups[1].Value is var bias && bias != lod) { allMatch = false; fileMatch = false; Miss(path, row.Value.Split('=')[0] + " LODBias", bias, lod); }
+            if (isPrimary && textureRows.Count == 0) { allMatch = false; fileMatch = false; Miss(path, "TEXTUREGROUP LODBias", null, lod); }
+            foreach (Match language in Regex.Matches(text, @"(?m)^(Language(?:Ext)?)=([a-zA-Z]{3})\r?$")) if (!Same(language.Groups[2].Value, Language(s))) { allMatch = false; fileMatch = false; Miss(path, language.Groups[1].Value, language.Groups[2].Value, Language(s)); }
+            if (fontName is not null && !Same(Path.GetFileName(path), "BaseEngine.ini") && Regex.Match(text, @"(?m)^SubtitleFontName=([^\r\n]*)") is { Success: true } font && !Same(font.Groups[1].Value, fontName)) { allMatch = false; fileMatch = false; Miss(path, "SubtitleFontName", font.Groups[1].Value, fontName); }
             states.Add(new JsonObject { ["File"] = path, ["Matches"] = fileMatch, ["TextureGroupsChecked"] = textureRows.Count });
         }
         var primaryCamera = File.Exists(Path.Combine(docsConfig, "GearCamera.ini")) ? Path.Combine(docsConfig, "GearCamera.ini") : Path.Combine(configDir, "GearCamera.ini");
@@ -548,7 +559,7 @@ internal sealed class SettingsEngine
             var baseFov = Regex.Match(text, @"(?m)^BaseFOV=([^\r\n]*)");
             var values = On(s, "FovAllModes") ? Regex.Matches(text, @"(?m)^FOVAngle=([^\r\n]*)").Select(m => (string?)m.Groups[1].Value).ToArray() : new[] { GetIniValue(text, "GearGame.GameplayCam_Default", "FOVAngle") };
             var ok = (!baseFov.Success || Same(baseFov.Groups[1].Value, fov)) && values.Length > 0 && values.All(v => Same(v, fov));
-            if (!ok && SamePath(path, primaryCamera)) allMatch = false;
+            if (!ok && SamePath(path, primaryCamera)) { allMatch = false; Miss(path, "FOV", baseFov.Success ? baseFov.Groups[1].Value : values.FirstOrDefault(), fov); }
             states.Add(new JsonObject { ["File"] = path, ["ExpectedFov"] = fov, ["Matches"] = ok });
         }
         var audioCommands = AudioCommands(s);
@@ -557,8 +568,9 @@ internal sealed class SettingsEngine
         {
             var text = File.ReadAllText(path);
             var ok = text.Contains($"-ResX={rx} -ResY={ry}", StringComparison.Ordinal) && text.Contains(On(s, "Fullscreen") ? "-FULLSCREEN" : "-WINDOWED", StringComparison.Ordinal)
-                && text.Contains(On(s, "VSync") ? "-VSYNC" : "-NOVSYNC", StringComparison.Ordinal) && text.Contains("-exec=Gears3_Audio.txt", StringComparison.Ordinal) == usesExec;
-            if (!ok) allMatch = false;
+                && text.Contains(On(s, "VSync") ? "-VSYNC" : "-NOVSYNC", StringComparison.Ordinal) && text.Contains("-exec=Gears3_Audio.txt", StringComparison.Ordinal) == usesExec
+                && text.Contains("-language=" + Language(s), StringComparison.OrdinalIgnoreCase);
+            if (!ok) { allMatch = false; Miss(path, "start arguments", null, $"-ResX={rx} -ResY={ry} {(On(s, "Fullscreen") ? "-FULLSCREEN" : "-WINDOWED")} {(On(s, "VSync") ? "-VSYNC" : "-NOVSYNC")} -language={Language(s)}{(usesExec ? " -exec=Gears3_Audio.txt" : "")}"); }
             states.Add(new JsonObject { ["File"] = path, ["LaunchArgumentsMatch"] = ok });
         }
         // Audio: channels in every engine INI that has the audio sections, the filter command file, run shake in the pawn INIs.
@@ -566,16 +578,26 @@ internal sealed class SettingsEngine
         foreach (var path in EngineFiles())
         {
             var text = File.ReadAllText(path);
-            foreach (var section in new[] { "XAudio2.XAudio2Device", "ALAudio.ALAudioDevice" }) if (GetIniValue(text, section, "MaxChannels") is { } value && !Same(value, channels)) allMatch = false;
+            foreach (var section in new[] { "XAudio2.XAudio2Device", "ALAudio.ALAudioDevice" }) if (GetIniValue(text, section, "MaxChannels") is { } value && !Same(value, channels)) { allMatch = false; Miss(path, "MaxChannels", value, channels); }
         }
         var execOk = usesExec ? File.Exists(audioExecPath) && File.ReadAllText(audioExecPath) == audioCommands : !File.Exists(audioExecPath);
-        if (!execOk) allMatch = false;
+        if (!execOk) { allMatch = false; Miss(audioExecPath, "audio commands", null, usesExec ? "the volume and filter commands" : "no file"); }
         foreach (var path in PawnFiles())
         {
             var text = File.ReadAllText(path);
-            foreach (var (section, stock) in RunShake) if (GetIniValue(text, section, "RoadieRunShakyCamDampeningFactor") is { } value && !Same(value, On(s, "DisableRunShake") ? "0.0f" : stock)) allMatch = false;
+            foreach (var (section, stock) in RunShake) if (GetIniValue(text, section, "RoadieRunShakyCamDampeningFactor") is { } value && !Same(value, On(s, "DisableRunShake") ? "0.0f" : stock)) { allMatch = false; Miss(path, "RoadieRunShakyCamDampeningFactor", value, On(s, "DisableRunShake") ? "0.0f" : stock); }
         }
-        return new JsonObject { ["IsApplied"] = allMatch, ["Files"] = states };
+        var menuDisabled = On(s, "HordeBeast") ? "false" : "true";
+        foreach (var path in MenuFiles())
+            foreach (Match entry in Regex.Matches(File.ReadAllText(path), @"\(Label=""(Horde|Siege)"",ImagePath=""[^""]*"",Next=MAINMENUOP_(?:Horde|Siege),bIsDisabled=(true|false)\)"))
+                if (!Same(entry.Groups[2].Value, menuDisabled)) { allMatch = false; Miss(path, entry.Groups[1].Value + " bIsDisabled", entry.Groups[2].Value, menuDisabled); }
+        // The subtitle font files: what Apply would still have to write for this size and language.
+        if (managed)
+        {
+            var (normalFont, largeFont) = SubtitleFonts.Sources(Language(s), Str(s, "SubtitleSize").ToLowerInvariant(), On(s, "ForceWarfareFonts"));
+            foreach (var (target, _) in MultipatchInstaller.FontWrites(root, normalFont, largeFont)) { allMatch = false; Miss(target, "subtitle font", null, Str(s, "SubtitleSize")); }
+        }
+        return new JsonObject { ["IsApplied"] = allMatch, ["Files"] = states, ["Problems"] = problems };
     }
 
     // ---------------------------------------------------------------- controls
@@ -635,6 +657,22 @@ internal sealed class SettingsEngine
             ["Success"] = true, ["Source"] = files[0], ["MouseSensitivity"] = GetIniValue(text, "Engine.PlayerInput", "MouseSensitivity"), ["Actions"] = rows,
             ["SupportedKeys"] = new JsonArray(SupportedKeys.Select(k => (JsonNode?)k).ToArray()), ["ReservedKeys"] = new JsonArray(ReservedKeys.Select(k => (JsonNode?)k).ToArray()), ["PauseAndEscapeEditable"] = false
         };
+    }
+
+    /// <summary>For the audit: each saved key that an input file holds differently.</summary>
+    internal JsonArray ControlProblems()
+    {
+        AssertPreflight("Controls", false);
+        var saved = ReadJsonObject(keybindsPath, optional: true);
+        var problems = new JsonArray();
+        foreach (var path in ControlFiles())
+        {
+            var map = BindingMap(File.ReadAllText(path));
+            foreach (var (command, node) in saved)
+                if (node is JsonValue value && value.TryGetValue<string>(out var key) && map.TryGetValue(command, out var keys) && keys.Count != 0 && !Same(keys[0], key))
+                    problems.Add(new JsonObject { ["File"] = Path.GetRelativePath(root, path), ["Key"] = KbActions.FirstOrDefault(a => Same(a.Command, command)).Action ?? command, ["Actual"] = keys[0], ["Expected"] = key });
+        }
+        return problems;
     }
 
     internal JsonObject ApplyControls(JsonObject bindings, string? mouseSensitivity)

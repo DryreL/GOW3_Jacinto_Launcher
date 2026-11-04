@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Lists every line of the launcher's interface that languages.csv does not translate into all languages.
-usage: l10n_audit.py [--out file]   Exit code 1 when something is missing."""
+usage: l10n_audit.py [--out file]   Exit code 1 when something is missing.
+       l10n_audit.py --new <code> <name>   Writes languages-<code>.csv for a new language: every line in English beside an empty column."""
 import csv, glob, io, json, os, re, sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
@@ -8,7 +9,7 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 CS_FILES = ['AboutPage.cs', 'InfoPages.cs', 'SettingsPage.cs', 'SettingsView.axaml.cs', 'GameSettingsView.axaml.cs', 'ControlsView.axaml.cs', 'MainWindow.axaml.cs', 'TextPage.cs', 'JacintoLauncher/Theme.cs']
 SKIP = re.compile(r'^(https?:|avares:|M\d|mods/|assets/|bg\.jpg|multipatch\.png|.*\.(jpg|png|txt|cs|json|exe|ini|csv)$|[A-Za-z]+Brush$|LeftMouseButton|RightMouseButton|MiddleMouseButton|ThumbMouseButton2?|MouseScroll\w+|SP_\w+)')
 # Names that stay as they are in every language: products, key names, console commands and map events.
-TECHNICAL = re.compile(r"^(Proton, umu-launcher or Wine|GitHub|\.NET|Avalonia.*|SkiaSharp|HarfBuzzSharp|Sentry|Aptabase|HTTP API v0|Steamworks SDK.*|JacintoNet|DXVK|Unreal Engine 3|Gears of War 3 Jacinto 1\.1\.1|\{.*|HD Textures Pack|HD Movies Pack|Türkçe|Português - Brasil| launch started|FXAA / Temporal AA|MSAA \dx|SSD / NVMe|HDD"
+TECHNICAL = re.compile(r"^(GearGame|Localization|Rabbit77rage|Mark Anthony|Proton, umu-launcher or Wine|GitHub|\.NET|Avalonia.*|SkiaSharp|HarfBuzzSharp|Sentry|Aptabase|HTTP API v0|Steamworks SDK.*|JacintoNet|DXVK|Unreal Engine 3|Gears of War 3 Jacinto 1\.1\.1|\{.*|HD Textures Pack|HD Movies Pack|Türkçe|Português - Brasil| launch started|FXAA / Temporal AA|MSAA \dx|SSD / NVMe|HDD"
                        r"|(Ctrl|Alt|Shift|U|Num|Delete|Page|Insert)\b.*|God|Badass|SuperDamage|Unlimited.*|Loaded|Invis|Fly / Ghost / Walk|slomo .*|SpawnWeapon .*|GiveWeapon .*|kill enemy.*|KillMyTarget|DBNOMyTarget|DebugAI .*|ToggleFlocking|DebugHeadshots|open .*|servertravel .*|ce <.*|HasChapterUnlock .*|UnlockAllChapters|ShowDamage|FF|LaughTrack.*|ShowProfileSettings|ScreenshotMode|stat fps.*|viewmode .*|show collision.*"
                        r"|(?i:jump|load_01|cine_|firstfight|gogo|enable_lift|gotrain|test_xx|chapter1).*)$")
 
@@ -69,7 +70,19 @@ def table():
     return codes, data
 
 
+def new_language(code, name):
+    rows = list(csv.reader(io.open(os.path.join(ROOT, 'languages.csv'), encoding='utf-8-sig', newline='')))
+    path = os.path.join(ROOT, f'languages-{code}.csv')
+    with open(path, 'w', encoding='utf-8', newline='') as out:
+        csv.writer(out).writerows([['key', 'en', code], ['language', 'English', name]] + [[r[0], r[1], ''] for r in rows[2:] if r])
+    print(f'{path}: fill the {code} column, then put the file beside the launcher to try it.')
+
+
 if __name__ == '__main__':
+    if '--new' in sys.argv:
+        at = sys.argv.index('--new')
+        new_language(sys.argv[at + 1], sys.argv[at + 2])
+        sys.exit(0)
     codes, data = table()
     missing = {}
     for line, source in wanted().items():

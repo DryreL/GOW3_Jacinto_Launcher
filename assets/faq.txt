@@ -24,7 +24,10 @@ Keyboard or gamepad?
 Settings > Controls. It decides which buttons work in some menus and which button icons the game shows. Keyboard and mouse: ESC and Enter work there, and the gamepad's B button does not. Gamepad: the reverse.
 
 How do I change my name?
-Press the pencil next to Signed in as. The game uses up to 12 characters.
+Press the pencil next to your name at the top left. The game uses up to 12 characters.
+
+Why did the launcher say JacintoNet was updated?
+JacintoNet is the part of the Multipatch that makes Steam co-op work. When it gets a new version, the launcher tells you once. If you play co-op, your friend must update too, or you may not be able to play together.
 
 How do I change the game language?
 Settings > General > Game language, then Apply settings. Community languages must be downloaded from Nexus Mods and installed first; the button next to the list opens the page. Choose the language afterwards and the launcher sets it up for you, including the subtitle font.

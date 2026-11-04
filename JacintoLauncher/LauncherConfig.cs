@@ -25,6 +25,12 @@ public class LauncherConfig
 
 	public bool BackupSaveOnLaunch { get; set; } = true;
 
+	// The close button sends the launcher to the system tray, so the online count keeps it.
+	public bool CloseToTray { get; set; } = true;
+
+	// Off by default: a second start brings the open launcher forward instead.
+	public bool AllowMultipleInstances { get; set; }
+
 	// Launcher interface language (L.Languages code); empty = Windows display language. Does not change the game.
 	public string? LauncherLanguage { get; set; }
 
@@ -40,6 +46,9 @@ public class LauncherConfig
 	// Game crash logs and dumps up to this time were already looked at; null = first run, older crashes are not sent.
 	public System.DateTime? GameCrashCheckedUtc { get; set; }
 
+	// The JacintoNet build the player was last told about; null = none yet, so the first one is not news.
+	public string? JacintoNetSeen { get; set; }
+
 	// Anonymous crash reports (Sentry) and usage events (Aptabase). The notice is shown once.
 	public bool TelemetryEnabled { get; set; } = true;
 	public bool TelemetryNoticeShown { get; set; }
@@ -49,9 +58,15 @@ public class LauncherConfig
 	public string? WinePrefix { get; set; }
 
 
+	// A folder Windows does not let the launcher write to, such as Program Files, keeps the settings in the user's own folder instead.
+	private static string Fallback(string exeDir) => Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "GOW3JacintoLauncher",
+		"config-" + System.Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(exeDir).ToUpperInvariant())))[..12] + ".json");
+
 	private static string PathOf(string exeDir)
 	{
-		return Path.Combine(exeDir, "GoW3Jacinto_Launcher.json");
+		var beside = Path.Combine(exeDir, "GoW3Jacinto_Launcher.json");
+		var fallback = Fallback(exeDir);
+		return File.Exists(fallback) && (!File.Exists(beside) || File.GetLastWriteTimeUtc(fallback) > File.GetLastWriteTimeUtc(beside)) ? fallback : beside;
 	}
 
 	public static LauncherConfig Load(string exeDir)
@@ -90,10 +105,20 @@ public class LauncherConfig
 			WriteIndented = true
 		};
 		string destination = PathOf(exeDir);
+		try { Write(destination, JsonSerializer.Serialize(this, options)); }
+		catch (System.UnauthorizedAccessException) when (destination != Fallback(exeDir))
+		{
+			Directory.CreateDirectory(Path.GetDirectoryName(Fallback(exeDir))!);
+			Write(Fallback(exeDir), JsonSerializer.Serialize(this, options));
+		}
+	}
+
+	private static void Write(string destination, string json)
+	{
 		string temporary = destination + ".tmp-" + System.Guid.NewGuid().ToString("N");
 		try
 		{
-			File.WriteAllText(temporary, JsonSerializer.Serialize(this, options));
+			File.WriteAllText(temporary, json);
 			File.Move(temporary, destination, true);
 		}
 		finally

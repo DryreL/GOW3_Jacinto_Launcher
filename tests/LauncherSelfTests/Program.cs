@@ -41,6 +41,10 @@ try
     var padForm = Convert.FromHexString("00" + "2123BD000000000000" + "11" + "21B04A000000000000" + "1616180D00812D01DB29" + "07000000546573744D6500");
     var keyForm = (byte[])padForm.Clone(); InputProfile.ToKeyboard(keyForm);
     Check(!InputProfile.IsGamepad(keyForm) && InputProfile.IsGamepad(padForm), "input profile is read from the package");
+    var hudKeys = new byte[120]; var hudPad = new byte[124]; BitConverter.GetBytes(5).CopyTo(hudKeys, 12); BitConverter.GetBytes(-4).CopyTo(hudPad, 12);
+    for (var i = 0; i < 16; i++) hudKeys[16 + 5 + 48 + i] = (byte)(i + 1);
+    InputProfile.CopyGuid(hudKeys, hudPad);
+    Check(hudPad.AsSpan(16 + 8 + 48, 16).SequenceEqual(hudKeys.AsSpan(16 + 5 + 48, 16)) && hudPad[16 + 8 + 48 + 16] == 0, "the gamepad HUD takes the keyboard HUD's package GUID");
     Check(Convert.ToHexString(keyForm).StartsWith("0021B04A000000000000" + "1121B04A", StringComparison.Ordinal), "keyboard form replaces the pad reference");
     InputProfile.ToGamepad(keyForm);
     Check(keyForm.SequenceEqual(padForm), "gamepad form restores the bytes and keeps the stock reference");
@@ -50,6 +54,19 @@ try
     Check(SubtitleFonts.Sources("CHN", "normal", false).Large == "extra/WarfareFonts2x_cn.upk" && SubtitleFonts.FontName("CHN", "big", false) == SubtitleFonts.Big, "Traditional Chinese uses its own font files");
     Check(SubtitleFonts.FontName("RUS", "big", false) == SubtitleFonts.Stock && SubtitleFonts.Sources("RUS", "big", false).Normal is null, "a language with its own font is left alone");
     Check(SubtitleFonts.FontName("RUS", "big", true) == SubtitleFonts.Big, "forcing the font overrides that");
+    Check(SubtitleFonts.Sources("INT", "big", false) == ("extra/WarfareFonts_normal.upk", "patch") && SubtitleFonts.Sources("INT", "normal", false) == ("extra/WarfareFonts_normal.upk", "patch") && SubtitleFonts.Sources("INT", "default", false).Normal == "original", "big and normal both copy the tool's two font files; default gives the original back");
+
+    // ---- cheat hotkeys: off comments the lines out, on gives back the same bytes ----
+    var cheatGame = Path.Combine(temp, "Cheat Game"); var cheatConfig = Path.Combine(cheatGame, "GearGame", "Config"); Directory.CreateDirectory(cheatConfig);
+    var cheatInput = Path.Combine(cheatConfig, "GearInput.ini");
+    var cheatText = "[Engine.PlayerInput]\r\nBindings=(Name=\"G\",Command=\"god\")\r\nBindings=(Name=\"O\",Command=\"slomo 5\")\r\nBindings=(Name=\"NumPadOne\",Command=\"switchtoweaponclass \\\"GearGame.GearWeap_RetroLancer\\\" true\",Control=True,Shift=False,Alt=False)\r\nBindings=(Name=\"LeftShift\",Command=\"Walking\")\r\nBindings=(Name=\"W\",Command=\"GBA_MoveForward\")\r\n";
+    File.WriteAllText(cheatInput, cheatText);
+    Check(CheatKeys.On(cheatGame, null) == true && CheatKeys.Keys(cheatGame, null).SetEquals(new[] { "G", "O", "NumPadOne" }), "cheat hotkeys are found, and only those");
+    CheatKeys.Set(cheatGame, null, false);
+    var cheatOff = File.ReadAllText(cheatInput);
+    Check(CheatKeys.On(cheatGame, null) == false && CheatKeys.Keys(cheatGame, null).Count == 0 && cheatOff.Contains(";Bindings=(Name=\"G\"") && cheatOff.Contains("\r\nBindings=(Name=\"LeftShift\",Command=\"Walking\")") && cheatOff.Contains("\r\nBindings=(Name=\"W\""), "off comments out the hotkeys and leaves walking and movement");
+    CheatKeys.Set(cheatGame, null, true);
+    Check(File.ReadAllText(cheatInput) == cheatText && File.ReadAllBytes(cheatInput).Length == System.Text.Encoding.UTF8.GetByteCount(cheatText), "on gives back exactly the original bytes, with no BOM added");
     Check(GameLanguages.Known.Any(l => l.Code == "CHN") && !GameLanguages.Known.Any(l => l.Code == "CHT"), "Traditional Chinese is the CHN pack");
 
     // ---- single installation: layout + network mode ----
@@ -120,6 +137,13 @@ try
     Check(File.ReadAllText(camera).Contains("BaseFOV=100"),"effective FOV"); Check(File.ReadAllText(start).Contains("-ResX=2560 -ResY=1440"),"effective launch resolution args");
     Check(JsonNode.Parse(File.ReadAllText(graphics))!["FutureField"]!["Keep"]!.GetValue<bool>(),"unknown field preserved after save");
     var after1=Hash(ini1); var repeat=MultipatchBridge.ApplyGraphicsThroughMultipatch(game,request); Check(Hash(ini1)==after1,"idempotent repeat apply");
+    var iniText=File.ReadAllText(ini1); File.WriteAllText(ini1,iniText.Replace("ResX=2560","ResX=1280"));
+    var audit=InstallAudit.Run(game).Where(f=>f.Problem is not null).ToList();
+    Check(audit.Any(f=>f.Item.StartsWith("Resolution (")&&f.Problem=="Is 1280x1440; should be 2560x1440."),"the audit names a setting the files lost, with both values: "+string.Join(" | ",audit.Select(f=>f.Item+": "+f.Problem)));
+    File.WriteAllText(ini1,iniText);
+    var savedGraphics=Path.Combine(GameLayout.ToolFilesDir(game)!,"graphics.json"); var savedAa=JsonNode.Parse(File.ReadAllText(savedGraphics))!; savedAa["AntiAliasing"]="fxaa"; File.WriteAllText(savedGraphics,savedAa.ToJsonString());
+    MultipatchBridge.TurnOffTemporalAA(game); Check(JsonNode.Parse(File.ReadAllText(savedGraphics))!["AntiAliasing"]!.GetValue<string>()=="off" && !File.ReadAllText(ini1).Contains("bAllowTemporalAA=True"),"a saved Temporal AA choice turns off, it stops the game");
+    MultipatchBridge.ApplyGraphicsThroughMultipatch(game,request);
     Check(File.ReadAllText(ini1).Split("MaxAnisotropy=").Length-1==1,"no duplicate INI key");
     var bad=JsonNode.Parse(request.ToJsonString())!.AsObject(); bad["AntiAliasing"]="msaa8x"; Throws(()=>MultipatchBridge.ApplyGraphicsThroughMultipatch(game,bad),"reject unsupported MSAA 8x"); Check(Hash(ini1)==after1,"invalid setting leaves files unchanged");
     if(OperatingSystem.IsWindows()){var lockFile=new FileStream(start,FileMode.Open,FileAccess.ReadWrite,FileShare.None); Throws(()=>MultipatchBridge.ApplyGraphicsThroughMultipatch(game,request),"locked target triggers failure"); lockFile.Dispose(); Check(Hash(ini1)==after1,"failed transaction rolls back prior writes");}
@@ -138,6 +162,10 @@ try
     var audioOn=JsonNode.Parse(audioReq.ToJsonString())!.AsObject(); audioOn["AudioFilter"]=true; audioOn["DisableRunShake"]=true;
     var audioTx2=MultipatchBridge.ApplyGraphicsThroughMultipatch(game,audioOn);
     Check(!File.Exists(audioExec)&&!File.ReadAllText(start).Contains("-exec="),"audio filter on removes the command file and -exec");
+    var master=JsonNode.Parse(audioOn.ToJsonString())!.AsObject(); master["MasterVolume"]=50;
+    var masterTx=MultipatchBridge.ApplyGraphicsThroughMultipatch(game,master); var masterText=File.ReadAllText(audioExec);
+    Check(masterTx["Applied"]?["IsApplied"]?.GetValue<bool>()==true&&masterText.Contains("ModifySoundClass Music Vol=0.5\r\n")&&masterText.Contains("ModifySoundClass GameMusic Vol=0.525\r\n")&&masterText.Contains("ModifySoundClass Dialog Vol=0.5\r\n")&&!masterText.Contains("DisableLPF"),"master volume scales every sound class: "+masterText.Split('\n')[0]);
+    MultipatchBridge.RollbackSettingsThroughMultipatch(game,masterTx["TransactionId"]!.GetValue<string>());
     Check(File.ReadAllText(pawn).Contains("RoadieRunShakyCamDampeningFactor=0.0f")&&File.ReadAllText(pawn).Contains("[Other]\r\nX=1"),"run shake off writes 0.0f only in its section");
     MultipatchBridge.RollbackSettingsThroughMultipatch(game,audioTx2["TransactionId"]!.GetValue<string>()); Check(File.ReadAllText(audioExec).Trim()=="DisableLPF","rollback restores the audio command file");
     MultipatchBridge.RollbackSettingsThroughMultipatch(game,audioTx["TransactionId"]!.GetValue<string>()); Check(!File.Exists(audioExec)&&Hash(pawn)==pawnBefore,"rollback removes the created command file and restores the pawn INI");
@@ -275,6 +303,20 @@ try
     Check(RoundTrip(original, original).SequenceEqual(original), "identical input");
     Check(RoundTrip(original, Array.Empty<byte>()).Length == 0, "emptied file");
 
+    // ---------------------------------------------------------------- JacintoNet notice
+    Check(!NetworkMode.Updated(null, "A") && !NetworkMode.Updated("A", "A") && NetworkMode.Updated("A", "B"), "only a new JacintoNet build is news, and the first one is not");
+
+    // ---------------------------------------------------------------- error reports
+    Check(!LauncherDiagnostics.Reportable(new UserActionException("x")) && !LauncherDiagnostics.Reportable(new IOException("virus", unchecked((int)0x800700E1))) && LauncherDiagnostics.Reportable(new IOException("x")), "only launcher bugs are reported");
+    var noScript = Path.Combine(temp, "Incomplete Game");
+    Directory.CreateDirectory(Path.Combine(noScript, "Binaries", "Win64"));
+    Check(MultipatchInstaller.MissingGameFile(noScript) is not null, "a game without GearGame.u is refused without an exception");
+    Check(MultipatchInstaller.NamedOneOneTwo(Path.Combine(temp, "Gears 3 Jacinto v1.1.2")) && !MultipatchInstaller.NamedOneOneTwo(Path.Combine(temp, "Gears 3 Jacinto")) && !MultipatchInstaller.NamedOneOneTwo(Path.Combine(temp, "Jacinto 1.1.1")), "only a folder named 1.1.2 is called the wrong version");
+    var readOnlyTree = Path.Combine(temp, "Read Only Tree"); Directory.CreateDirectory(readOnlyTree);
+    var readOnlyFile = Path.Combine(readOnlyTree, "level_objectives.esm"); File.WriteAllText(readOnlyFile, "x"); File.SetAttributes(readOnlyFile, FileAttributes.ReadOnly);
+    MultipatchInstaller.DeleteTree(readOnlyTree);
+    Check(!Directory.Exists(readOnlyTree), "a read-only file does not stop a restore");
+
     // ---------------------------------------------------------------- Steam shortcut
     if (OperatingSystem.IsWindows())
     {
@@ -297,6 +339,12 @@ try
     Check(Text(again).Contains("Other Game"), "refresh keeps other entries");
     Throws(() => SteamShortcut.Merge(new byte[] { 1, 2, 3 }, "x", null), "unknown shortcuts.vdf is refused");
     Check((SteamShortcut.AppId("\"x\"", "y") & 0x80000000) != 0, "non-Steam app id has the top bit");
+    var local = "\"UserLocalConfigStore\"\n{\n\t\"apps\"\n\t{\n\t\t\"480\"\n\t\t{\n\t\t\t\"OverlayAppEnable\"\t\t\"1\"\n\t\t}\n\t\t\"7\"\n\t\t{\n\t\t\t\"UseSteamControllerConfig\"\t\t\"2\"\n\t\t}\n\t}\n}\n";
+    var noInput = SteamShortcut.WithoutSteamInput(local, new uint[] { 480, 7, 9 });
+    Check(noInput.Contains("\t\t\"480\"\n\t\t{\n\t\t\t\"UseSteamControllerConfig\"\t\t\"0\"\n\t\t\t\"OverlayAppEnable\"") && noInput.Contains("\"UseSteamControllerConfig\"\t\t\"2\"") && noInput.Contains("\t\t\"9\"\n\t\t{\n\t\t\t\"UseSteamControllerConfig\"\t\t\"0\"\n\t\t}\n"), "Steam Input starts off, and a player's own choice stays");
+    Check(SteamShortcut.WithoutSteamInput(noInput, new uint[] { 480, 7, 9 }) == noInput, "turning Steam Input off twice changes nothing");
+    var noApps = SteamShortcut.WithoutSteamInput("\"UserLocalConfigStore\"\n{\n\t\"friends\"\n\t{\n\t}\n}\n", new uint[] { 480 });
+    Check(noApps.EndsWith("\t\"apps\"\n\t{\n\t\t\"480\"\n\t\t{\n\t\t\t\"UseSteamControllerConfig\"\t\t\"0\"\n\t\t}\n\t}\n}\n"), "a localconfig.vdf without apps gets the section");
 
     // ---------------------------------------------------------------- gamepad
     var pad = new PadMapper();

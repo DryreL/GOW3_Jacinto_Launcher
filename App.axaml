@@ -9,7 +9,8 @@
     <Style Selector="TextBlock.h2"><Setter Property="FontSize" Value="13"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="LetterSpacing" Value="1.5"/><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/><Setter Property="Margin" Value="0,0,0,12"/></Style>
     <Style Selector="TextBlock.muted"><Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/><Setter Property="TextWrapping" Value="Wrap"/><Setter Property="FontSize" Value="13"/></Style>
     <Style Selector="TextBlock.status"><Setter Property="Foreground" Value="{DynamicResource StatusBrush}"/><Setter Property="TextWrapping" Value="Wrap"/><Setter Property="FontSize" Value="13"/></Style>
-    <Style Selector="TextBlock.status.error"><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/></Style>
+    <Style Selector="PathIcon.error"><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/></Style>
+    <Style Selector="TextBlock.error"><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/></Style>
     <Style Selector="TextBlock.label"><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="TextWrapping" Value="Wrap"/><Setter Property="Margin" Value="0,0,16,0"/></Style>
 
     <!-- Layout: one card style and one row rhythm for every settings page. -->
@@ -19,6 +20,8 @@
     <Style Selector="TextBox"><Setter Property="MinHeight" Value="36"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="CornerRadius" Value="3"/></Style>
     <Style Selector="CheckBox"><Setter Property="MinHeight" Value="34"/></Style>
     <Style Selector="Slider"><Setter Property="VerticalAlignment" Value="Center"/></Style>
+    <Style Selector="TextBlock.changed"><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+    <Style Selector="CheckBox.changed"><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
 
     <!-- Buttons -->
     <Style Selector="Button"><Setter Property="CornerRadius" Value="3"/><Setter Property="MinHeight" Value="38"/><Setter Property="Padding" Value="16,0"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="Background" Value="{DynamicResource FieldBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Foreground" Value="{DynamicResource TextBrush}"/></Style>
@@ -43,17 +46,23 @@
     <!-- FAQ -->
     <Style Selector="Expander"><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Margin" Value="0,0,0,6"/><Setter Property="CornerRadius" Value="4"/></Style>
 
-    <!-- Slider: visible track on the dark card. -->
-    <Style Selector="Slider /template/ RepeatButton#PART_DecreaseButton"><Setter Property="Background" Value="{DynamicResource AccentBrush}"/></Style>
-    <Style Selector="Slider /template/ RepeatButton#PART_IncreaseButton"><Setter Property="Background" Value="{DynamicResource LineBrush}"/></Style>
+    <!-- Slider: a thick bar with a block handle, as in the game's menus. -->
+    <Style Selector="Slider"><Style.Resources><x:Double x:Key="SliderTrackThemeHeight">12</x:Double></Style.Resources></Style>
+    <Style Selector="Slider /template/ RepeatButton#PART_DecreaseButton, Slider:pointerover /template/ RepeatButton#PART_DecreaseButton, Slider:pressed /template/ RepeatButton#PART_DecreaseButton"><Setter Property="Background" Value="{DynamicResource AccentBrush}"/><Setter Property="CornerRadius" Value="1"/></Style>
+    <Style Selector="Slider /template/ RepeatButton#PART_IncreaseButton, Slider:pointerover /template/ RepeatButton#PART_IncreaseButton, Slider:pressed /template/ RepeatButton#PART_IncreaseButton"><Setter Property="Background" Value="{DynamicResource LineBrush}"/><Setter Property="CornerRadius" Value="1"/></Style>
+    <Style Selector="Slider /template/ Thumb"><Setter Property="Width" Value="14"/><Setter Property="Height" Value="26"/><Setter Property="Template"><ControlTemplate><Border Background="{DynamicResource TextBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2" CornerRadius="2"/></ControlTemplate></Setter></Style>
 
     <!-- Links: credits nicknames and the version number -->
     <Style Selector="Button.link"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="MinHeight" Value="20"/><Setter Property="Padding" Value="0,0,6,0"/><Setter Property="FontSize" Value="13"/><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/></Style>
     <Style Selector="Button.link:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.link:focus-visible /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource TextBrush}"/></Style>
 
-    <!-- The version next to JACINTO: a box in the theme colour that opens the changelog. -->
-    <Style Selector="Button.badge"><Setter Property="Background" Value="{DynamicResource AccentDimBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="MinHeight" Value="0"/><Setter Property="Padding" Value="7,1"/><Setter Property="FontSize" Value="15"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Foreground" Value="White"/></Style>
-    <Style Selector="Button.badge:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.badge:focus-visible /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}"/><Setter Property="Foreground" Value="White"/></Style>
+    <!-- The launcher version under JACINTO: small and quiet, and it opens the changelog. -->
+    <Style Selector="Border.badge"><Setter Property="BorderBrush" Value="{DynamicResource AccentTextBrush}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="4"/><Setter Property="Padding" Value="6,1"/><Setter Property="VerticalAlignment" Value="Center"/></Style>
+    <Style Selector="Border.badge > TextBlock"><Setter Property="FontSize" Value="10"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="LetterSpacing" Value="1"/><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/></Style>
+    <Style Selector="Border.badge.new"><Setter Property="Background" Value="{DynamicResource AccentBrush}"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="5,0"/></Style>
+    <Style Selector="Border.badge.new > TextBlock"><Setter Property="Foreground" Value="White"/><Setter Property="FontSize" Value="9"/></Style>
+    <Style Selector="Button.version"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="MinHeight" Value="0"/><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,2,0,0"/><Setter Property="HorizontalAlignment" Value="Left"/><Setter Property="FontSize" Value="11"/><Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/></Style>
+    <Style Selector="Button.version:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.version:focus-visible /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource TextBrush}"/></Style>
 
     <!-- Theme colour swatches -->
     <Style Selector="Button.swatch"><Setter Property="Width" Value="26"/><Setter Property="Height" Value="26"/><Setter Property="MinHeight" Value="26"/><Setter Property="Padding" Value="0"/><Setter Property="CornerRadius" Value="13"/><Setter Property="BorderThickness" Value="2"/><Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/><Setter Property="Margin" Value="0,0,8,0"/></Style>
@@ -80,6 +89,7 @@
     <Style Selector="ToggleButton /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Transitions"><Transitions><BrushTransition Property="Background" Duration="0:0:0.12"/></Transitions></Setter></Style>
     <Style Selector="Button, ToggleButton"><Setter Property="Transitions"><Transitions><TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.08"/></Transitions></Setter></Style>
     <Style Selector="Button:pressed, ToggleButton:pressed"><Setter Property="RenderTransform" Value="scale(0.97)"/></Style>
+    <Style Selector="Expander /template/ ToggleButton:pressed"><Setter Property="RenderTransform" Value="scale(1)"/></Style>
     <Style Selector="Border.overlay[IsVisible=True]"><Style.Animations><Animation Duration="0:0:0.16" Easing="CubicEaseOut"><KeyFrame Cue="0%"><Setter Property="Opacity" Value="0"/></KeyFrame><KeyFrame Cue="100%"><Setter Property="Opacity" Value="1"/></KeyFrame></Animation></Style.Animations></Style>
     <Style Selector="Border.overlay[IsVisible=True] > Border.card"><Style.Animations><Animation Duration="0:0:0.2" Easing="CubicEaseOut"><KeyFrame Cue="0%"><Setter Property="ScaleTransform.ScaleX" Value="0.95"/><Setter Property="ScaleTransform.ScaleY" Value="0.95"/></KeyFrame><KeyFrame Cue="100%"><Setter Property="ScaleTransform.ScaleX" Value="1"/><Setter Property="ScaleTransform.ScaleY" Value="1"/></KeyFrame></Animation></Style.Animations></Style>
 

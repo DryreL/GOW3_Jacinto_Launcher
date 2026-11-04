@@ -8,21 +8,25 @@
         <TextBlock Text="Changes the launcher only; the game language is not modified." Classes="muted" Margin="0,0,0,14"/>
         <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="THEME COLOR" Classes="label"/><ContentControl x:Name="ThemeHost" Grid.Column="1" VerticalAlignment="Center"/></Grid>
         <Grid Classes="row" ColumnDefinitions="240,*"><TextBlock Text="APPEARANCE" Classes="label"/><ComboBox x:Name="ThemeModeBox" Grid.Column="1" AutomationProperties.Name="Appearance"><ComboBoxItem Content="Auto"/><ComboBoxItem Content="Light"/><ComboBoxItem Content="Dark"/></ComboBox></Grid>
+        <CheckBox x:Name="CloseToTrayCheck" Content="Minimize to the system tray when closed" ToolTip.Tip="The close button keeps the launcher running in the tray. Exit it from the tray icon." Click="CloseToTray_Click"/>
+        <CheckBox x:Name="MultipleInstancesCheck" Content="Allow more than one launcher open at a time" Click="MultipleInstances_Click"/>
       </StackPanel></Border>
 
       <Border Classes="card"><StackPanel>
         <TextBlock Text="GAME" Classes="h2"/>
         <Grid Classes="row" ColumnDefinitions="240,*,Auto"><TextBlock Text="Game language" Classes="label"/><ComboBox x:Name="GameLanguageBox" Grid.Column="1"/><Button x:Name="LanguageModButton" Grid.Column="2" Content="Open on Nexus Mods" Margin="10,0,0,0" IsVisible="False" Click="LanguageMod_Click"/></Grid>
+        <Grid x:Name="CustomLanguageRow" Classes="row" ColumnDefinitions="240,*" IsVisible="False"><TextBlock Text="Language code" Classes="label"/><TextBox x:Name="CustomLanguageBox" Grid.Column="1" Width="110" MaxLength="3" HorizontalAlignment="Left" PlaceholderText="FRA" AutomationProperties.Name="Language code"/></Grid>
         <TextBlock x:Name="GameLanguageNote" Classes="muted" Margin="0,0,0,10" IsVisible="False"/>
         <CheckBox x:Name="SkipIntroCheck" Content="Skip Intro" Click="SkipIntro_Click"/>
         <CheckBox x:Name="BackupCheck" Content="Back up saves before every launch" Click="Backup_Toggle"/>
         <CheckBox x:Name="RunShakeCheck" Content="Camera shake while running (roadie run)"/>
-        <CheckBox x:Name="HordeBeastCheck" Content="Horde and Beast in the main menu (experimental)" ToolTip.Tip="The Jacinto build ships them switched off. They are unfinished and may not work."/>
+        <StackPanel Orientation="Horizontal" Spacing="8"><CheckBox x:Name="HordeBeastCheck" Content="Horde and Beast in the main menu" ToolTip.Tip="The Jacinto build ships them switched off. They are unfinished and may not work."/><Border Classes="badge"><TextBlock Text="EXPERIMENTAL"/></Border></StackPanel>
         <WrapPanel Margin="0,10,0,0">
           <Button Content="Choose game folder" Margin="0,0,10,8" Click="Browse_Click"/>
           <Button x:Name="ShortcutButton" Content="Create Desktop Shortcut" Margin="0,0,10,8" Click="Shortcut_Click"/>
           <Button x:Name="SteamButton" Content="Add to Steam" Margin="0,0,10,8" Click="Steam_Click"/>
           <Button x:Name="VerifyButton" Content="Verify game files" Margin="0,0,10,8" Click="Verify_Click"/>
+          <Button x:Name="AuditButton" Content="Installation audit" Margin="0,0,10,8" ToolTip.Tip="Checks that every setting and patched file was really applied, and says why if not." Click="Audit_Click"/>
           <Button Content="Show install guide" Margin="0,0,10,8" Click="Guide_Click"/>
           <Button x:Name="RepairButton" Content="Repair files" Margin="0,0,10,8" IsVisible="False" Click="Repair_Click"/>
         </WrapPanel>
@@ -49,8 +53,6 @@
         <TextBlock Text="PRIVACY" Classes="h2"/>
         <CheckBox x:Name="TelemetryCheck" Content="Send anonymous crash reports and usage statistics" Click="Telemetry_Click"/>
         <TextBlock Text="Launcher and game crash reports, with the end of the game log, and launch counts by mode, OS and language. Names, Steam IDs, IP addresses and file paths are removed before sending." Classes="muted" Margin="0,6,0,0"/>
-        <TextBlock Text="Usage statistics also show which pages, settings tabs and main buttons are used, never what you type or choose." Classes="muted" Margin="0,6,0,0"/>
-        <TextBlock Text="The online count at the bottom of the menu keeps a one-way hash of your IP address, so each player counts once in the total." Classes="muted" Margin="0,6,0,0"/>
       </StackPanel></Border>
     </StackPanel>
 </UserControl>

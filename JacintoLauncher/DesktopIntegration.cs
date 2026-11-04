@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace JacintoLauncher;
 
@@ -122,7 +123,58 @@ internal static class SteamShortcut
             File.WriteAllBytes(temporary, result);
             File.Move(temporary, path, true);
         }
+        TurnOffSteamInput(AppId("\"" + executable + "\"", AppName));
         return directories.Length;
+    }
+
+    // JacintoNet starts Steam as Spacewar, the SDK's test app; the library entry is the other way in.
+    internal const uint JacintoNetApp = 480;
+
+    /// <summary>
+    /// Steam Input turns the gamepad into its own layout, so it starts off for the game. A player who changed it in Steam keeps that choice.
+    /// Steam keeps the file in memory and writes it back on exit, so this does nothing while Steam runs.
+    /// </summary>
+    internal static void TurnOffSteamInput(uint? shortcutApp = null)
+    {
+        if (GameRunner.IsSteamClientRunning() || SteamRoot() is not { } root || !Directory.Exists(Path.Combine(root, "userdata"))) return;
+        var apps = shortcutApp is { } shortcut ? new[] { JacintoNetApp, shortcut } : new[] { JacintoNetApp };
+        foreach (var path in Directory.GetDirectories(Path.Combine(root, "userdata")).Select(d => Path.Combine(d, "config", "localconfig.vdf")).Where(File.Exists))
+        {
+            var text = File.ReadAllText(path);
+            var updated = WithoutSteamInput(text, apps);
+            if (updated == text) continue;
+            File.WriteAllText(path + ".bak", text);
+            var temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
+            File.WriteAllText(temporary, updated);
+            File.Move(temporary, path, true);
+        }
+    }
+
+    /// <summary>localconfig.vdf with UseSteamControllerConfig "0" (off) for each app that has no value yet. Per-app options are under "apps", one tab in.</summary>
+    internal static string WithoutSteamInput(string text, IEnumerable<uint> apps)
+    {
+        var nl = text.Contains("\r\n") ? "\r\n" : "\n";
+        const string AppsBlock = "(?mi)^\t\"apps\"\r?\n\t[{]\r?\n";
+        var block = Regex.Match(text, AppsBlock);
+        if (!block.Success)
+        {
+            var last = text.LastIndexOf('}');
+            if (last < 0) throw new InvalidDataException("localconfig.vdf has an unknown format; it was left untouched.");
+            text = text[..last] + "\t\"apps\"" + nl + "\t{" + nl + "\t}" + nl + text[last..];
+            block = Regex.Match(text, AppsBlock);
+        }
+        var start = block.Index + block.Length;
+        var line = "\t\t\t\"UseSteamControllerConfig\"\t\t\"0\"" + nl;
+        foreach (var app in apps)
+        {
+            var end = start + Regex.Match(text[start..], "(?m)^\t[}]").Index;
+            var own = Regex.Match(text[start..end], "(?m)^\t\t\"" + app + "\"\r?\n\t\t[{]\r?\n");
+            if (!own.Success) { text = text.Insert(start, "\t\t\"" + app + "\"" + nl + "\t\t{" + nl + line + "\t\t}" + nl); continue; }
+            var bodyStart = start + own.Index + own.Length;
+            var bodyEnd = bodyStart + Regex.Match(text[bodyStart..], "(?m)^\t\t[}]").Index;
+            if (!text[bodyStart..bodyEnd].Contains("\"UseSteamControllerConfig\"", StringComparison.OrdinalIgnoreCase)) text = text.Insert(bodyStart, line);
+        }
+        return text;
     }
 
     /// <summary>Non-Steam entries carry a CRC-based id; Steam computes it from the exe and name when it is absent or stale.</summary>

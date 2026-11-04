@@ -68,6 +68,15 @@ internal static class NetworkMode
         return payload is not null && File.Exists(payload) ? payload : null;
     }
 
+    /// <summary>Which JacintoNet build this game holds, whichever network mode it is in; null when the game has none.</summary>
+    internal static string? PayloadHash(string gameDir)
+    {
+        var payload = GameLayout.ToolFilesDir(gameDir) is { } files ? Path.Combine(files, JacintoNetFiles[0]) : null;
+        return payload is not null && File.Exists(payload) ? Hash(payload) : null;
+    }
+
+    internal static bool Updated(string? seen, string current) => seen is not null && seen != current;
+
     /// <summary>Read-only check that <paramref name="mode"/> can be applied; throws with the reason otherwise.</summary>
     internal static void Validate(string gameDir, string mode)
     {
@@ -94,7 +103,7 @@ internal static class NetworkMode
     /// <summary>Drives the installation to <paramref name="mode"/>. Idempotent; refuses while the game runs.</summary>
     internal static void Apply(string gameDir, string mode)
     {
-        if (GameLayout.GameRunning()) throw new InvalidOperationException("Close the game before changing the network mode.");
+        if (GameLayout.GameRunning()) throw new UserActionException("Close the game before changing the network mode.");
         Validate(gameDir, mode);
         var binaries = BinariesDir(gameDir);
         if (mode == Steam)

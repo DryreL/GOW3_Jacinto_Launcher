@@ -57,10 +57,10 @@ internal static class Telemetry
                     return evt;
                 });
             });
-            // Log-only failures become reports too; refused input is the user's, not a bug.
+            // Log-only failures become reports too.
             LauncherDiagnostics.ErrorReported = (operation, exception) =>
             {
-                if (exception is ArgumentException) return;
+                if (!LauncherDiagnostics.Reportable(exception)) return;
                 SentrySdk.CaptureException(exception, scope => scope.SetTag("operation", operation.Split(' ')[0]));
             };
         }
@@ -159,12 +159,13 @@ internal static class Telemetry
         });
     }
 
-    private static string Scrub(string text)
+    internal static string Scrub(string text)
     {
-        foreach (var (value, label) in new[] { (gameDir, "<game>"), (Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "<home>"), (Environment.UserName, "<user>"), (playerName, "<player>") })
+        foreach (var (value, label) in new[] { (gameDir, "<game>"), (Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "<home>"), (Environment.UserName, "<user>"), (Environment.MachineName, "<pc>"), (playerName, "<player>") })
             if (!string.IsNullOrEmpty(value)) text = text.Replace(value, label, StringComparison.OrdinalIgnoreCase);
         text = Regex.Replace(text, @"\b7656119\d{10}\b", "<steamid>");
         text = Regex.Replace(text, @"\b\d{1,3}(\.\d{1,3}){3}\b", "<ip>");
+        text = Regex.Replace(text, @"'[A-Za-z]:\\[^']*'", "'<path>'"); // Quoted paths may hold spaces, and a folder name after one.
         return Regex.Replace(text, @"[A-Za-z]:\\[^\s""']+", "<path>");
     }
 }

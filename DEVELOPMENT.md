@@ -46,6 +46,8 @@ The VRAM profile is 4 GB and the drive profile SSD, the same values the previous
 
 `languages.csv` holds all launcher text: one column per language, the first row is the code, the second the name shown in the list. It is built into the launcher. A `languages.csv` beside the executable is read on top of it, so a translator can fix a text or add a column for a new language without building anything. Empty cells fall back to English.
 
+To start a new language, run `python tools/l10n_audit.py --new hu Magyar`. It writes `languages-hu.csv`: every line in English beside an empty `hu` column. The translator fills that one column and puts the file beside the launcher, which reads every `languages-<code>.csv` there; nothing else changes. To ship it, paste the column into `languages.csv`.
+
 ## Discord
 
 Discord lists `geargame.exe` as Gears of War 4 (`/api/v9/applications/detectable`), and its Gears of War 3 entry has no executable. The launcher therefore starts a copy named `GearsOfWar3.exe`, removed on uninstall, and sets the activity with the Gears of War 3 application id (`DiscordPresence.cs`).
@@ -92,7 +94,17 @@ GitHub cannot issue a Windows code signing certificate.
   4. Add the `SIGNPATH_API_TOKEN` secret and `SIGNPATH_ORGANIZATION_ID` variable in GitHub. The workflow's signing step then runs by itself on every `v*` tag.
 
   Signing covers the launcher only. `wsock32.dll` and `GOW3Helper.dll` are not built here, so they cannot go through this pipeline until their sources are in the repository.
-- **macOS**: Gatekeeper accepts only an Apple Developer ID (paid). Without one, users run `xattr -dr com.apple.quarantine` on the folder.
+- **macOS**: on every `v*` tag, CI signs with a Developer ID, adds the secure timestamp and notarizes (`tools/Sign-macOS.sh`) once these five GitHub secrets exist. Without them the build stays unsigned and users run `xattr -dr com.apple.quarantine` on the folder.
+
+  | Secret | Value |
+  |---|---|
+  | `MACOS_CERTIFICATE_P12` | A "Developer ID Application" certificate with its private key, exported from Keychain Access as `.p12`, then base64: `base64 -i cert.p12 \| pbcopy` |
+  | `MACOS_CERTIFICATE_PASSWORD` | The password chosen at that export |
+  | `APPLE_ID` | The Apple Account email of the developer account |
+  | `APPLE_APP_PASSWORD` | An app-specific password from account.apple.com, not the account password |
+  | `APPLE_TEAM_ID` | The 10-character Team ID from developer.apple.com/account |
+
+  The launcher is a bare executable, which cannot hold a stapled ticket: Gatekeeper checks it online on first launch.
 
 ## Antivirus findings
 

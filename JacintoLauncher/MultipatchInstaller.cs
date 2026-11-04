@@ -97,7 +97,7 @@ internal static class MultipatchInstaller
         for (var cursor = Path.GetFullPath(path); !string.IsNullOrEmpty(cursor); cursor = Path.GetDirectoryName(cursor)!)
         {
             FileSystemInfo info = Directory.Exists(cursor) ? new DirectoryInfo(cursor) : new FileInfo(cursor);
-            if (info.Exists && info.Attributes.HasFlag(FileAttributes.ReparsePoint) && Path.GetPathRoot(cursor) != cursor && OperatingSystem.IsWindows()) throw new IOException("Reparse point refused: " + cursor);
+            if (info.Exists && info.Attributes.HasFlag(FileAttributes.ReparsePoint) && Path.GetPathRoot(cursor) != cursor && OperatingSystem.IsWindows()) throw new UserActionException("The game folder is inside a linked or cloud folder, such as OneDrive: " + cursor + ". Move the game to a normal folder, such as C:\\Games. No files were changed.");
         }
     }
 
@@ -294,8 +294,21 @@ internal static class MultipatchInstaller
         var hasFull = Directory.Exists(Path.Combine(game, "tools", "multipatch"));
         var hasDryrel = Directory.Exists(Path.Combine(game, "Gears3_Multipatch_Tool"));
         if (hasDryrel && !hasFull) return "existing-multipatch";
-        if (!hasFull && !hasDryrel && Hash(Path.Combine(game, "Binaries", "Win64", "GearGame.exe")) == CleanExe && Hash(NetworkMode.ScriptPath(game)) == CleanU) return "clean";
+        // The file check before patching names any file that is not the original 1.1.1 one, so the folder needs no version name.
+        if (!hasFull && !hasDryrel && MissingGameFile(game) is null) return "clean";
         return "unsupported";
+    }
+
+    /// <summary>The file that shows a game folder is incomplete, as a badly extracted download or an antivirus leaves it; null when it is there.</summary>
+    internal static string? MissingGameFile(string game) => File.Exists(NetworkMode.ScriptPath(game)) ? null : Path.GetRelativePath(game, NetworkMode.ScriptPath(game));
+
+    // A launcher left open in the game folder holds its own file, which both restoring and installing must replace.
+    private static void AssertLauncherFree(string game)
+    {
+        var installed = Path.Combine(LayoutDir(game), "Launcher", Path.GetFileName(Environment.ProcessPath!));
+        if (!File.Exists(installed) || string.Equals(Path.GetFullPath(installed), Environment.ProcessPath, StringComparison.OrdinalIgnoreCase)) return;
+        try { using var _ = new FileStream(installed, FileMode.Open, FileAccess.ReadWrite, FileShare.None); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { throw new UserActionException("Close the launcher that is open from the game folder, then try again. No files were changed."); }
     }
 
     /// <summary>Installs from the package next to the running launcher. Returns the scenario; throws with the reason otherwise.</summary>
@@ -304,16 +317,17 @@ internal static class MultipatchInstaller
         game = Path.TrimEndingDirectorySeparator(Path.GetFullPath(game));
         AssertPlain(game);
         using var mutex = new Mutex(false, "Local\\JacintoInstall-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(game.ToLowerInvariant()))));
-        if (!mutex.WaitOne(0)) throw new InvalidOperationException("Another installation is already running for this game.");
-        if (GameLayout.GameRunning()) throw new InvalidOperationException("Close the game before installing.");
-        if (File.Exists(IdentityPath(game))) throw new InvalidOperationException("The Jacinto launcher is already installed here. Uninstall it in Settings first to reinstall.");
+        if (!mutex.WaitOne(0)) throw new UserActionException("Another installation is already running for this game.");
+        if (GameLayout.GameRunning()) throw new UserActionException("Close the game before installing.");
+        AssertLauncherFree(game);
+        if (File.Exists(IdentityPath(game))) throw new UserActionException("The Jacinto launcher is already installed here. Use Uninstall Multipatch on the Home screen first to reinstall.");
         if (File.Exists(Marker(game)))
         {
             log("A previous installation did not finish. Restoring the original files first...");
             Restore(game, patchset, log);
         }
         var scenario = Scenario(game);
-        if (scenario == "unsupported") throw new InvalidOperationException("This game is neither a clean Jacinto 1.1.1 nor a game patched by the Gears3 Multi Patch Tool. Jacinto 1.1.2 (Horde and multiplayer) is not supported. No files were changed.");
+        if (scenario == "unsupported") throw new UserActionException("This game is neither a clean Jacinto 1.1.1 nor a game patched by the Gears3 Multi Patch Tool. Jacinto 1.1.2 (Horde and multiplayer) is not supported. No files were changed.");
         if (scenario == "existing-multipatch") { InstallLauncherOnly(game, launcherSource, log, createShortcut); return scenario; }
 
         var (zip, entries) = Open(patchset);
@@ -321,8 +335,8 @@ internal static class MultipatchInstaller
         {
             log("Checking the game files...");
             var problems = Preflight(game, entries);
-            if (problems.Count != 0) throw new InvalidOperationException($"{problems.Count} game file(s) cannot be patched; nothing was changed. First: {problems[0]}");
-            if (new DriveInfo(Path.GetPathRoot(game)!).AvailableFreeSpace < MinimumFreeBytes) throw new IOException("At least 2 GB of free space is required on the game drive.");
+            if (problems.Count != 0) throw new UserActionException($"{problems.Count} game file(s) cannot be patched; nothing was changed. First: {problems[0]}");
+            if (new DriveInfo(Path.GetPathRoot(game)!).AvailableFreeSpace < MinimumFreeBytes) throw new UserActionException("At least 2 GB of free space is required on the game drive.");
             try
             {
                 File.WriteAllText(Marker(game), JsonSerializer.Serialize(new { Schema = 3, Mode = "Single", Source = game, StartedUtc = DateTime.UtcNow.ToString("o") }));
@@ -389,7 +403,7 @@ internal static class MultipatchInstaller
     /// <summary>The old installer's "Keyboard or Gamepad?" question, as a switch that needs no reinstall. It keeps the current network mode.</summary>
     internal static void SetInput(string game, bool gamepad)
     {
-        if (GameLayout.GameRunning()) throw new InvalidOperationException("Close the game first.");
+        if (GameLayout.GameRunning()) throw new UserActionException("Close the game first.");
         var script = NetworkMode.ScriptPath(game);
         var data = File.ReadAllBytes(script);
         if (gamepad) InputProfile.ToGamepad(data); else InputProfile.ToKeyboard(data);
@@ -405,9 +419,22 @@ internal static class MultipatchInstaller
             if (updated != text) File.WriteAllText(ini, updated);
         }
         var target = Resolve(game, HudPath);
-        if (gamepad) { CopyVerified(HudOriginal(game), target, Hash(HudOriginal(game))); return; }
         var (zip, entries) = Open(InstalledPatchset(game));
         using (zip) WriteEntry(zip, entries.First(e => e.Path.Equals(HudPath, StringComparison.OrdinalIgnoreCase)), game, HudOriginal(game));
+        if (!gamepad) return;
+        // The pad icons are in the original file. It takes the keyboard file's GUID, or a keyboard player and a gamepad player cannot join each other.
+        // Only the pictures differ: names, objects and imports are the same, so both games number the objects alike.
+        var icons = File.ReadAllBytes(HudOriginal(game));
+        InputProfile.CopyGuid(File.ReadAllBytes(target), icons);
+        var padHud = target + TempTag + Guid.NewGuid().ToString("N");
+        try { File.WriteAllBytes(padHud, icons); ReplaceFile(padHud, target); }
+        finally { if (File.Exists(padHud)) File.Delete(padHud); }
+    }
+
+    /// <summary>Gamepad installations from before v0.3.9 have the original HUD file with its own GUID, so keyboard players could not join them.</summary>
+    internal static void ShareHudGuid(string game)
+    {
+        if (CanSwitchInput(game) && Hash(Resolve(game, HudPath)).Equals(Hash(HudOriginal(game)), StringComparison.OrdinalIgnoreCase) && UsesGamepad(game)) SetInput(game, true);
     }
 
     // ---------------------------------------------------------------- HUD scaling
@@ -431,7 +458,7 @@ internal static class MultipatchInstaller
 
     internal static void SetHudScaling(string game, bool on)
     {
-        if (GameLayout.GameRunning()) throw new InvalidOperationException("Close the game first.");
+        if (GameLayout.GameRunning()) throw new UserActionException("Close the game first.");
         var bytes = on ? HudOn : ReadAt(ExeOriginal(game), HudHook, HudOn.Length);
         using var stream = new FileStream(ExePath(game), FileMode.Open, FileAccess.Write, FileShare.None);
         stream.Position = HudHook;
@@ -449,7 +476,7 @@ internal static class MultipatchInstaller
         var (zip, entries) = Open(InstalledPatchset(game));
         using (zip)
         {
-            string? Expected(string source, string file) => source == "patch" ? entries.First(e => Path.GetFileName(e.Path).Equals(file, StringComparison.OrdinalIgnoreCase)).After
+            string? Expected(string source, string file) => source == "patch" ? entries.FirstOrDefault(e => Path.GetFileName(e.Path).Equals(file, StringComparison.OrdinalIgnoreCase))?.After
                 : source == "original" ? (File.Exists(Path.Combine(OriginalsDir(game), Path.GetRelativePath(game, FontPath(game, file)))) ? Hash(Path.Combine(OriginalsDir(game), Path.GetRelativePath(game, FontPath(game, file)))) : null)
                 : BlobHash(zip, source);
             foreach (var (file, source) in new[] { (SubtitleFonts.NormalFile, normal), (SubtitleFonts.BigFile, large) })
@@ -526,7 +553,7 @@ internal static class MultipatchInstaller
     /// </summary>
     internal static void Upgrade(string game, string exeDir, Action<string> log)
     {
-        if (GameLayout.GameRunning()) throw new InvalidOperationException("Close the game before updating the Multipatch.");
+        if (GameLayout.GameRunning()) throw new UserActionException("Close the game before updating the Multipatch.");
         var patchset = FindPackagedPatchset(exeDir, true) ?? throw new FileNotFoundException("The launcher package holds no patch data.");
         try
         {
@@ -577,6 +604,13 @@ internal static class MultipatchInstaller
             MultipatchBridge.ApplyGraphicsThroughMultipatch(game, JsonNode.Parse(File.ReadAllText(Path.Combine(files, "graphics.json")))!.AsObject());
             if (!hud) SetHudScaling(game, false);
             if (gamepad) SetInput(game, true);
+            // The new patch data may hold a newer JacintoNet than the copy parked for Offline; that copy no longer counts.
+            foreach (var name in NetworkMode.JacintoNetFiles)
+            {
+                var installed = Path.Combine(game, "Binaries", "Win64", name);
+                var parked = Path.Combine(NetworkMode.ParkingDir(game), name);
+                if (File.Exists(installed) && File.Exists(parked) && entries.Any(e => Resolve(game, e.Path) == installed && e.After.Equals(Hash(installed), StringComparison.OrdinalIgnoreCase))) File.Delete(parked);
+            }
             if (offline) NetworkMode.Apply(game, NetworkMode.Offline);
             MultipatchBridge.ApplyHdCaps(game);
             if (oldLayout)
@@ -595,8 +629,7 @@ internal static class MultipatchInstaller
     }
 
     /// <summary>Not a game the Multipatch can use: neither clean Jacinto 1.1.1 nor anything patched. Players often try the 1.1.2 multiplayer build.</summary>
-    internal static bool NotOneOneOne(string game) => !File.Exists(IdentityPath(game)) && !File.Exists(Marker(game)) && Scenario(game) == "unsupported";
-    internal static bool NamedOneOneTwo(string game) => System.Text.RegularExpressions.Regex.IsMatch(game, @"(?<![\d.])1[._ ]1[._ ]2(?!\d)") && NotOneOneOne(game);
+    internal static bool NamedOneOneTwo(string game) => System.Text.RegularExpressions.Regex.IsMatch(game, @"(?<![\d.])1[._ ]1[._ ]2(?!\d)") && !File.Exists(IdentityPath(game)) && !File.Exists(Marker(game));
 
     // The patch data records the display of the PC that built it; this PC may differ.
     private static void ApplyDisplay(string game, Action<string> log)
@@ -626,6 +659,7 @@ internal static class MultipatchInstaller
         foreach (var file in files)
         {
             var target = Path.Combine(destination, Path.GetRelativePath(launcherSource, file));
+            if (string.Equals(Path.GetFullPath(file), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase)) continue; // Already running from the game folder.
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Copy(file, target, true);
             if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(target, File.GetUnixFileMode(file));
@@ -634,7 +668,7 @@ internal static class MultipatchInstaller
 
     private static string? CreateShortcut(string game)
     {
-        var executable = Path.Combine(LayoutDir(game), "Launcher", OperatingSystem.IsWindows() ? "GoW3Jacinto_Launcher.exe" : "GoW3Jacinto_Launcher");
+        var executable = Path.Combine(LayoutDir(game), "Launcher", Path.GetFileName(Environment.ProcessPath!));
         var desktop = Environment.GetEnvironmentVariable("JACINTO_TEST_DESKTOP") ?? Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory, Environment.SpecialFolderOption.Create);
         if (string.IsNullOrEmpty(desktop)) return null;
         Directory.CreateDirectory(desktop);
@@ -650,22 +684,23 @@ internal static class MultipatchInstaller
     {
         log("Multi Patch Tool installation found. Only the launcher will be installed.");
         var files = Path.Combine(game, "Gears3_Multipatch_Tool", "_files");
-        var script = Path.Combine(game, "Gears3_Start_Game.bat");
+        var script = GameLayout.StartScript(game);
         var problems = new List<string>();
-        if (!File.Exists(script)) problems.Add("Gears3_Start_Game.bat is missing.");
+        if (script is null) problems.Add("Gears3_Start_Game is missing.");
         if (!Directory.Exists(Path.Combine(files, "Backups")) || !Directory.EnumerateFiles(Path.Combine(files, "Backups"), "*", SearchOption.AllDirectories).Any()) problems.Add("The Multipatch backups folder is empty.");
         if (Hash(Path.Combine(game, "Binaries", "Win64", "GearGame.exe")) == CleanExe) problems.Add("GearGame.exe is still unpatched.");
         string? mode = null;
         try { mode = NetworkMode.Read(game).Describe(); } catch (InvalidDataException) { problems.Add("Unsupported Multipatch version (Campaign setting not found)."); }
-        if (problems.Count != 0) throw new InvalidOperationException("Launcher-only installation refused. No files were changed. " + string.Join(" ", problems));
+        if (problems.Count != 0) throw new UserActionException("Launcher-only installation refused. No files were changed. " + string.Join(" ", problems));
         string? createdGraphics = null;
         var graphics = Path.Combine(files, "graphics.json");
         if (!File.Exists(graphics))
         {
-            var match = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(script), @"GearGame\.exe -(FULLSCREEN|WINDOWED) -(NOVSYNC|VSYNC) -ResX=(\d+) -ResY=(\d+) -language=([A-Za-z]{3})");
+            var match = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(script!), @"GearGame\.exe -(FULLSCREEN|WINDOWED) -(NOVSYNC|VSYNC) -ResX=(\d+) -ResY=(\d+) -language=([A-Za-z]{3})");
             var defaults = new JsonObject { ["PlayerName"] = "", ["Language"] = "INT", ["Resolution"] = "native", ["Fullscreen"] = true, ["VSync"] = false };
             if (match.Success) { defaults["Fullscreen"] = match.Groups[1].Value == "FULLSCREEN"; defaults["VSync"] = match.Groups[2].Value == "VSYNC"; defaults["Resolution"] = $"{match.Groups[3].Value}x{match.Groups[4].Value}"; defaults["Language"] = match.Groups[5].Value.ToUpperInvariant(); }
-            File.WriteAllText(graphics, defaults.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            try { File.WriteAllText(graphics, defaults.ToJsonString(new JsonSerializerOptions { WriteIndented = true })); }
+            catch (UnauthorizedAccessException) { throw new UserActionException("Windows does not let the launcher write to the game folder, as in Program Files. Move the game to a folder such as C:\\Games, or start the launcher as administrator. No files were changed."); }
             createdGraphics = Hash(graphics);
         }
         InstallLauncherFiles(game, launcherSource);
@@ -709,7 +744,7 @@ internal static class MultipatchInstaller
             if (copies.Length != 0 && (Hash(Path.Combine(game, "Binaries", "Win64", "GearGame.exe")) != CleanExe || Hash(NetworkMode.ScriptPath(game)) != CleanU)) throw new IOException("GearGame.exe or GearGame.u is still not the original Jacinto 1.1.1 file; the safety copies were kept.");
         }
         var tools = Path.Combine(game, "tools");
-        foreach (var directory in new[] { Path.Combine(tools, "multipatch"), OriginalsDir(game) }) if (Directory.Exists(directory)) { AssertPlain(directory); Directory.Delete(directory, true); }
+        foreach (var directory in new[] { Path.Combine(tools, "multipatch"), OriginalsDir(game) }) if (Directory.Exists(directory)) { AssertPlain(directory); DeleteTree(directory); }
         if (Directory.Exists(tools) && !Directory.EnumerateFileSystemEntries(tools).Any()) Directory.Delete(tools);
         if (Directory.Exists(LayoutDir(game)) && !File.Exists(IdentityPath(game))) RemoveLayoutExceptRunning(game);
         if (File.Exists(Marker(game))) File.Delete(Marker(game));
@@ -720,16 +755,24 @@ internal static class MultipatchInstaller
     {
         var running = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
         if (running.StartsWith(LayoutDir(game), StringComparison.OrdinalIgnoreCase)) return;
-        Directory.Delete(LayoutDir(game), true);
+        DeleteTree(LayoutDir(game));
+    }
+
+    // Files from a read-only download refuse a plain recursive delete.
+    internal static void DeleteTree(string directory)
+    {
+        foreach (var entry in Directory.EnumerateFileSystemEntries(directory, "*", SearchOption.AllDirectories)) File.SetAttributes(entry, File.GetAttributes(entry) & ~FileAttributes.ReadOnly);
+        File.SetAttributes(directory, File.GetAttributes(directory) & ~FileAttributes.ReadOnly);
+        Directory.Delete(directory, true);
     }
 
     /// <summary>Returns the game to clean Jacinto 1.1.1 (full install) or to the state the launcher found (launcher-only).</summary>
     internal static void Uninstall(string game, Action<string> log)
     {
         game = Path.TrimEndingDirectorySeparator(Path.GetFullPath(game));
-        if (GameLayout.GameRunning()) throw new InvalidOperationException("Close the game before uninstalling.");
+        if (GameLayout.GameRunning()) throw new UserActionException("Close the game before uninstalling.");
         var identity = JsonNode.Parse(File.ReadAllText(IdentityPath(game)))!;
-        if (identity["Schema"]?.GetValue<int>() != 3) throw new InvalidOperationException("This installation was made by an older package. Use its JacintoLauncher\\Uninstall.bat.");
+        if (identity["Schema"]?.GetValue<int>() != 3) throw new UserActionException("This installation was made by an older package. Use its JacintoLauncher\\Uninstall.bat.");
         var kind = identity["Kind"]!.GetValue<string>();
         if (kind == "full") Restore(game, InstalledPatchset(game), log);
         else
@@ -766,7 +809,7 @@ internal static class MultipatchInstaller
     {
         var layout = LayoutDir(game);
         var running = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
-        if (!running.StartsWith(layout, StringComparison.OrdinalIgnoreCase)) { Directory.Delete(layout, true); return; }
+        if (!running.StartsWith(layout, StringComparison.OrdinalIgnoreCase)) { DeleteTree(layout); return; }
         var start = OperatingSystem.IsWindows()
             ? new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c for /l %i in (1,1,300) do @(ping -n 4 127.0.0.1 >nul & rmdir /s /q \"{layout}\" 2>nul & if not exist \"{layout}\" exit)") { CreateNoWindow = true, UseShellExecute = false, WorkingDirectory = game }
             : new System.Diagnostics.ProcessStartInfo("/bin/sh", new[] { "-c", "sleep 3; rm -rf \"$0\"", layout }) { UseShellExecute = false, WorkingDirectory = game };
@@ -791,6 +834,13 @@ internal static class MultipatchInstaller
                 var actual = Path.GetFileName(target).Equals("GearGame.u", StringComparison.OrdinalIgnoreCase) ? NetworkMode.HashAsSteam(target) : Hash(target);
                 // Same file, other choice: the gamepad profile keeps the original icons, Traditional Chinese has its own font, and HUD scaling off leaves one call out.
                 var other = entry.Path.Equals(HudPath, StringComparison.OrdinalIgnoreCase) ? entry.Before : Path.GetFileName(target).Equals(SubtitleFonts.BigFile, StringComparison.OrdinalIgnoreCase) ? BlobHash(zip, "extra/WarfareFonts2x_cn.upk") : null;
+                if (entry.Path.Equals(HudPath, StringComparison.OrdinalIgnoreCase) && File.Exists(HudOriginal(game)))
+                {
+                    // The gamepad icons carry the keyboard file's GUID; see SetInput.
+                    var hud = File.ReadAllBytes(target);
+                    InputProfile.CopyGuid(File.ReadAllBytes(HudOriginal(game)), hud);
+                    if (Convert.ToHexString(SHA256.HashData(hud)).Equals(entry.Before, StringComparison.OrdinalIgnoreCase)) actual = entry.Before!;
+                }
                 if (Path.GetFileName(target).Equals("GearGame.exe", StringComparison.OrdinalIgnoreCase) && !UsesHudScaling(game))
                 {
                     var exe = File.ReadAllBytes(target);
@@ -806,7 +856,7 @@ internal static class MultipatchInstaller
     /// <summary>Rewrites damaged files from the safety copies and the patch data, keeping the current network mode.</summary>
     internal static void Repair(string game, IEnumerable<Entry> damaged, Action<string> log)
     {
-        if (GameLayout.GameRunning()) throw new InvalidOperationException("Close the game before repairing.");
+        if (GameLayout.GameRunning()) throw new UserActionException("Close the game before repairing.");
         var offline = NetworkMode.Read(game).Describe() == NetworkMode.Offline;
         var gamepad = UsesGamepad(game);
         var hud = UsesHudScaling(game);

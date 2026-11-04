@@ -188,3 +188,4 @@ keys.local.props
 /multipatch/**/*.before_*
 /multipatch/**/Backups/
 /graphify-out
+/promo
