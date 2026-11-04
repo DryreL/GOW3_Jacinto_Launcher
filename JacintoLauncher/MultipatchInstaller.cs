@@ -40,6 +40,10 @@ internal static class MultipatchInstaller
     private static bool InstalledCopy(string exeDir) => Path.GetFileName(exeDir) == "Launcher" && Path.GetFileName(Path.GetDirectoryName(exeDir)) == "JacintoLauncher";
     private static Stream? EmbeddedPatchset() => typeof(MultipatchInstaller).Assembly.GetManifestResourceStream(PatchsetName);
 
+    /// <summary>Free space on the filesystem holding the folder. On Linux and macOS the path root is always "/", which on a
+    /// Steam Deck is the small system partition, not /home; DriveInfo there reads the mount of the folder itself (issue #1).</summary>
+    internal static long FreeBytes(string folder) => new DriveInfo(OperatingSystem.IsWindows() ? Path.GetPathRoot(folder)! : folder).AvailableFreeSpace;
+
     internal static bool HasPackagedPatchset(string exeDir)
     {
         if (File.Exists(Path.Combine(exeDir, PatchsetName))) return true;
@@ -336,7 +340,7 @@ internal static class MultipatchInstaller
             log("Checking the game files...");
             var problems = Preflight(game, entries);
             if (problems.Count != 0) throw new UserActionException($"{problems.Count} game file(s) cannot be patched; nothing was changed. First: {problems[0]}");
-            if (new DriveInfo(Path.GetPathRoot(game)!).AvailableFreeSpace < MinimumFreeBytes) throw new UserActionException("At least 2 GB of free space is required on the game drive.");
+            if (FreeBytes(game) < MinimumFreeBytes) throw new UserActionException("At least 2 GB of free space is required on the game drive.");
             try
             {
                 File.WriteAllText(Marker(game), JsonSerializer.Serialize(new { Schema = 3, Mode = "Single", Source = game, StartedUtc = DateTime.UtcNow.ToString("o") }));

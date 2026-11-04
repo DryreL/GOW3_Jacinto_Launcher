@@ -98,7 +98,7 @@ internal sealed class AboutPage : UserControl
         };
         if (gameDir is not null)
         {
-            var free = new DriveInfo(Path.GetPathRoot(gameDir)!).AvailableFreeSpace;
+            var free = JacintoLauncher.MultipatchInstaller.FreeBytes(gameDir);
             list.Add((L.T("Free space (2 GB or more)"), $"{free / (double)Gigabyte:0.#} GB", free >= 2 * Gigabyte));
             var missing = GameRunner.MissingDirectX(gameDir, config);
             list.Add((L.T("DirectX June 2010 files"), missing is null ? L.T("Found") : missing, missing is null));
