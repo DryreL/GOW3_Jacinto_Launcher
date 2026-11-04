@@ -6,6 +6,15 @@ $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Set-Location -LiteralPath $repo
 function RunGit { $out = & git @args; if ($LASTEXITCODE -ne 0) { throw "git $args failed" }; $out }
+# GitHub sometimes answers a push with "Internal Server Error": a push is tried three times.
+function PushGit {
+    for ($try = 1; $try -le 3; $try++) {
+        & git push @args
+        if ($LASTEXITCODE -eq 0) { return }
+        if ($try -lt 3) { Write-Host "git push failed (try $try of 3), retrying in $(10 * $try) s..."; Start-Sleep (10 * $try) }
+    }
+    throw "git push $($args -join ' ') failed. Run Release.bat again: it continues from here."
+}
 # GitHub's API sometimes answers 502 or times out on large uploads: each call is tried three times before the release stops.
 function RunGh {
     for ($try = 1; $try -le 3; $try++) {
@@ -31,7 +40,13 @@ $tag = "v$version"
 if ((RunGit rev-parse --abbrev-ref HEAD) -ne 'main') { throw 'Switch to main first.' }
 $dirty = RunGit status --porcelain
 if ($dirty -and -not $DryRun) { throw "Commit your changes first:`n$($dirty -join "`n")" }
-if (RunGit tag --list $tag) { throw "$tag already exists." }
+$resume = $false
+if (RunGit tag --list $tag) {
+    $onGitHub = & git ls-remote --tags origin "refs/tags/$tag"
+    if ($onGitHub -or (RunGit rev-parse "$tag^{}") -ne (RunGit rev-parse HEAD)) { throw "$tag already exists." }
+    $resume = $true
+    Write-Host "$tag is here but not on GitHub yet (an earlier run stopped): continuing with it."
+}
 
 # The section of this version in the changelog becomes the release notes.
 $changelog = (Get-Content -LiteralPath 'changelog.txt' -Raw -Encoding UTF8) -replace "`r`n", "`n"
@@ -52,12 +67,12 @@ Write-Host ""
 if ($DryRun) { Write-Host "Dry run: nothing was pushed. Notes: $notes"; return }
 if ((Read-Host "Push main, tag $tag and publish? Type yes") -cne 'yes') { Write-Host 'Stopped. Nothing was pushed.'; return }
 
-RunGit push origin main | Out-Null
+PushGit origin main
 # A prerelease: GitHub's "latest" and the launcher's update check both skip it.
 if (@(& gh release list --limit 100 --json tagName --jq '.[].tagName') -notcontains 'patch-data') { RunGh release create patch-data --prerelease --latest=false --title 'Patch data for CI' --notes 'multipatch.jcpatch, read by the build workflow. Not a launcher release.' }
 if (-not (PatchDataUploaded)) { RunGh release upload patch-data @($assets.FullName) --clobber } else { Write-Host 'patch-data already holds this patch data.' }
-RunGit tag -a $tag -m $tag
-RunGit push origin $tag | Out-Null
+if (-not $resume) { RunGit tag -a $tag -m $tag | Out-Null }
+PushGit origin $tag
 
 Write-Host 'Waiting for the CI build...'
 $sha = RunGit rev-parse HEAD
