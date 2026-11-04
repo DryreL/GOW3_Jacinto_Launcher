@@ -93,7 +93,10 @@ internal static class LauncherUpdate
         ZipFile.ExtractToDirectory(archive, incoming);
         File.Delete(archive);
         // A package zip has one folder around the launcher; the update must be the launcher folder itself.
-        var executable = Directory.EnumerateFiles(incoming, Path.GetFileName(Environment.ProcessPath!), SearchOption.AllDirectories).FirstOrDefault() ?? throw new InvalidDataException("The update holds no launcher.");
+        // Found by its package name: the running copy may have been renamed (for example "GoW3Jacinto_Launcher v0.3.8.exe").
+        var executable = new[] { PackageExe, Path.GetFileName(Environment.ProcessPath!) }
+            .Select(name => Directory.EnumerateFiles(incoming, name, SearchOption.AllDirectories).FirstOrDefault()).FirstOrDefault(found => found is not null)
+            ?? throw new InvalidDataException("The update holds no launcher.");
         if (Path.GetDirectoryName(executable) is { } inner && !string.Equals(inner, incoming, StringComparison.OrdinalIgnoreCase))
         {
             var lifted = incoming + ".lift";
@@ -111,7 +114,7 @@ internal static class LauncherUpdate
         }
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(executable, File.GetUnixFileMode(executable) | UnixFileMode.UserExecute);
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, WorkingDirectory = incoming };
-        foreach (var argument in new[] { "--finish-update", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), exeDir }) start.ArgumentList.Add(argument);
+        foreach (var argument in new[] { "--finish-update", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), Environment.ProcessPath! }) start.ArgumentList.Add(argument);
         Process.Start(start)?.Dispose();
     }
 
@@ -123,34 +126,44 @@ internal static class LauncherUpdate
         return false;
     }
 
-    private static void FinishSwap(int oldProcess, string target)
+    private static string PackageExe => "GoW3Jacinto_Launcher" + (OperatingSystem.IsWindows() ? ".exe" : "");
+
+    // Only the package's own files are replaced, never the folder: the launcher may sit on the desktop or in Downloads
+    // next to the user's files. The old launcher keeps its file name. "oldLauncher" is the old executable; launchers
+    // up to v0.3.8 pass their folder instead.
+    private static void FinishSwap(int oldProcess, string oldLauncher)
     {
         try
         {
             try { using var process = Process.GetProcessById(oldProcess); process.WaitForExit(30000); } catch (ArgumentException) { }
+            if (Directory.Exists(oldLauncher)) oldLauncher = Path.Combine(oldLauncher, PackageExe);
+            var target = Path.GetDirectoryName(oldLauncher)!;
             var source = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
-            var old = target + ".old";
-            if (Directory.Exists(old)) Directory.Delete(old, true);
-            for (var attempt = 0; ; attempt++)
-            {
-                try { Directory.Move(target, old); break; }
-                catch (IOException) when (attempt < 20) { Thread.Sleep(500); } // An antivirus scan can hold the folder briefly.
-            }
+            var backup = oldLauncher + ".old";
+            if (File.Exists(oldLauncher))
+                for (var attempt = 0; ; attempt++)
+                {
+                    try { File.Move(oldLauncher, backup, true); break; }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException && attempt < 20) { Thread.Sleep(500); } // An antivirus scan can hold the file briefly.
+                }
             try
             {
-                CopyTree(source, target);
-                foreach (var keep in new[] { "GoW3Jacinto_Launcher.json", "languages.csv" })
-                    if (File.Exists(Path.Combine(old, keep))) File.Copy(Path.Combine(old, keep), Path.Combine(target, keep), true);
-                if (Directory.Exists(Path.Combine(old, "logs"))) CopyTree(Path.Combine(old, "logs"), Path.Combine(target, "logs"));
+                File.Copy(Environment.ProcessPath!, oldLauncher, true);
+                if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(oldLauncher, File.GetUnixFileMode(Environment.ProcessPath!));
             }
             catch
             {
-                if (Directory.Exists(target)) Directory.Delete(target, true);
-                Directory.Move(old, target);
+                if (File.Exists(backup)) File.Move(backup, oldLauncher, true);
                 throw;
             }
-            var executable = Path.Combine(target, Path.GetFileName(Environment.ProcessPath!));
-            var start = new ProcessStartInfo(executable) { UseShellExecute = false, WorkingDirectory = target };
+            foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+            {
+                if (string.Equals(file, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase) || Path.GetFileName(file) == "GoW3Jacinto_Launcher.json") continue;
+                var destination = Path.Combine(target, Path.GetRelativePath(source, file));
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                File.Copy(file, destination, true);
+            }
+            var start = new ProcessStartInfo(oldLauncher) { UseShellExecute = false, WorkingDirectory = target };
             start.ArgumentList.Add("--cleanup-update"); start.ArgumentList.Add(source);
             Process.Start(start)?.Dispose();
         }
@@ -163,20 +176,8 @@ internal static class LauncherUpdate
         {
             Thread.Sleep(1000);
             if (Directory.Exists(updateFolder) && updateFolder.EndsWith(".update", StringComparison.OrdinalIgnoreCase)) Directory.Delete(updateFolder, true);
-            var old = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory) + ".old";
-            if (Directory.Exists(old)) Directory.Delete(old, true);
+            if (File.Exists(Environment.ProcessPath + ".old")) File.Delete(Environment.ProcessPath + ".old");
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { LauncherDiagnostics.Info("Update leftovers kept: " + exception.Message); }
-    }
-
-    private static void CopyTree(string source, string destination)
-    {
-        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
-        {
-            var target = Path.Combine(destination, Path.GetRelativePath(source, file));
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            File.Copy(file, target, true);
-            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(target, File.GetUnixFileMode(file));
-        }
     }
 }

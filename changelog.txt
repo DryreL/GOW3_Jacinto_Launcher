@@ -6,6 +6,7 @@ NexusMods Page: https://www.nexusmods.com/gearsofwar3/mods/27
 =================================================================
 
 v0.3.9 (03 Nov 2026, 11:21 AM)
+- Fixed "The update could not be installed" when the launcher file was renamed (for example "GoW3Jacinto_Launcher_v0.3.8.exe"). An update now replaces only the launcher's own files and keeps the file name, so other files in the same folder are never touched.
 - Fixed a game crash a few seconds into the campaign: the FXAA / Temporal AA setting stopped the game, so it is gone and a saved choice turns off by itself.
 - Settings: an option you changed but did not save gets a star and the theme color. Revert settings and Reset to Defaults replace Rollback, and both ask first.
 - Uninstall Multipatch, Restore Selected Backup and Add to Steam ask in a window instead of a second click. Add to Steam asks only when Steam has to restart.

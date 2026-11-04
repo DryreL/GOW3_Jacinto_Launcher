@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([switch]$DryRun)
+param([switch]$DryRun, [switch]$DeleteLatest)
 # Puts the patch data on the "patch-data" release for CI, tags the version in the csproj, waits for the CI build and publishes the release.
 # CI builds the packages and makes a draft, so no launcher sees the update until the patch data is on it. Run Build.bat first: it writes dist\multipatch.jcpatch.
 $ErrorActionPreference = 'Stop'
@@ -31,6 +31,20 @@ function PatchDataUploaded {
     # Parsed here: Windows PowerShell drops the quotes inside a jq filter on the way to gh.
     $remote = (& gh release view patch-data --json assets | ConvertFrom-Json).assets | Where-Object { $_.name -eq 'multipatch.jcpatch' -and $_.state -eq 'uploaded' }
     return $remote -and $remote.size -eq (Get-Item -LiteralPath 'dist\multipatch.jcpatch').Length
+}
+
+# -DeleteLatest: removes the newest launcher release (never patch-data) with its tag, on GitHub and here, after typing the tag.
+if ($DeleteLatest) {
+    $latest = (& gh release list --limit 20 --json tagName,isDraft,publishedAt | ConvertFrom-Json) | Where-Object { $_.tagName -ne 'patch-data' } | Select-Object -First 1
+    if (-not $latest) { throw 'No launcher release found.' }
+    $doomed = $latest.tagName
+    Write-Host "Latest release: $doomed (draft: $($latest.isDraft)). This deletes the release and the tag on GitHub and here."
+    if ((Read-Host "Type $doomed to delete it") -ne $doomed) { Write-Host 'Nothing deleted.'; exit 0 }
+    RunGh release delete $doomed --yes --cleanup-tag
+    if (& git ls-remote --tags origin "refs/tags/$doomed") { PushGit origin --delete $doomed }
+    if (& git tag --list $doomed) { RunGit tag -d $doomed | Out-Null }
+    Write-Host "$doomed deleted. Run Release.bat again to publish it anew."
+    exit 0
 }
 
 $version = ([xml](Get-Content -LiteralPath 'GoW3Jacinto_Launcher.csproj' -Raw)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
