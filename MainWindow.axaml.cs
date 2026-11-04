@@ -63,6 +63,7 @@ public partial class MainWindow : Window
         NewBadge.IsVisible = ReleasedRecently();
         TelemetryNotice.IsVisible = cfg.TelemetryEnabled && !cfg.TelemetryNoticeShown;
         LauncherDiagnostics.Info("Launcher started. Game directory: " + (gameDir ?? "<not found>"));
+        if (gameDir is { } leftover) _ = Task.Run(() => MultipatchInstaller.RemoveLeftoverLayout(leftover));
         ShowPage(HomeNav);
         ApplySidebar();
         _ = RefreshStateAsync();

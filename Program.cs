@@ -27,7 +27,12 @@ internal static class Program
         // One launcher at a time, unless Settings allows more: a second start asks the first to show itself and quits.
         using var single = new System.Threading.Mutex(false, @"Local\GoW3JacintoLauncher.Instance", out var first);
         using var show = new System.Threading.EventWaitHandle(false, System.Threading.EventResetMode.AutoReset, @"Local\GoW3JacintoLauncher.Show");
-        if (!first && !LauncherConfig.Load(System.IO.Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory)).AllowMultipleInstances) { show.Set(); return 0; }
+        if (!first && !LauncherConfig.Load(System.IO.Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory)).AllowMultipleInstances)
+        {
+            LauncherDiagnostics.Info("Another launcher is open; it was asked to show itself.");
+            show.Set();
+            return 0;
+        }
         if (first) new System.Threading.Thread(() => { while (show.WaitOne()) ShowRequested?.Invoke(); }) { IsBackground = true }.Start();
         try { return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args); }
         catch (Exception exception)

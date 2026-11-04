@@ -22,6 +22,7 @@ v0.3.9 (03 Nov 2026, 11:21 AM)
 - Cheats: a switch at the top turns the cheat hotkeys (G, K, L, O, J, number pad weapons ...) on or off in the game. The console commands keep working.
 - Controls: a key that is also a cheat hotkey is allowed, with a warning that the game does both.
 - Clicking the tab that is already open no longer reloads it, so unsaved changes stay.
+- Antivirus false positives (Avast, AVG): the Windows executable is no longer compressed, and Uninstall no longer starts a hidden command window to delete the launcher folder. The folder the running launcher holds is removed the next time a launcher starts from elsewhere.
 - Only one launcher opens at a time: starting it again brings the open one forward, from the tray too. Settings > Launcher can allow more.
 - The tray icon menu has Play Offline and Play on Steam.
 - The launcher version is in the theme color, with a NEW! badge on the day a version comes out and the day after. The gap between JACINTO and v1.1.1 is gone.

@@ -306,6 +306,10 @@ try
     // ---------------------------------------------------------------- JacintoNet notice
     Check(!NetworkMode.Updated(null, "A") && !NetworkMode.Updated("A", "A") && NetworkMode.Updated("A", "B"), "only a new JacintoNet build is news, and the first one is not");
 
+    var cfgDir = Path.Combine(temp, "Config Dir"); Directory.CreateDirectory(cfgDir);
+    File.WriteAllText(Path.Combine(cfgDir, "GoW3Jacinto_Launcher.json"), "{\n  \"AllowMultipleInstances\": true, \"PlayerName\": \"Player\",\n  \"CloseToTray\": false\n}");
+    var loaded = LauncherConfig.Load(cfgDir);
+    Check(loaded.AllowMultipleInstances && !loaded.CloseToTray && loaded.PlayerName == "Player", "the launcher settings file is read, multiple instances included");
     // ---------------------------------------------------------------- error reports
     Check(!LauncherDiagnostics.Reportable(new UserActionException("x")) && !LauncherDiagnostics.Reportable(new IOException("virus", unchecked((int)0x800700E1))) && LauncherDiagnostics.Reportable(new IOException("x")), "only launcher bugs are reported");
     var noScript = Path.Combine(temp, "Incomplete Game");

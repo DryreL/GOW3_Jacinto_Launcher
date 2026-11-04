@@ -6,7 +6,23 @@ $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Set-Location -LiteralPath $repo
 function RunGit { $out = & git @args; if ($LASTEXITCODE -ne 0) { throw "git $args failed" }; $out }
-function RunGh { & gh @args; if ($LASTEXITCODE -ne 0) { throw "gh $args failed" } }
+# GitHub's API sometimes answers 502 or times out on large uploads: each call is tried three times before the release stops.
+function RunGh {
+    for ($try = 1; $try -le 3; $try++) {
+        & gh @args
+        if ($LASTEXITCODE -eq 0) { return }
+        if ($try -lt 3) { Write-Host "gh failed (try $try of 3), retrying in $(10 * $try) s..."; Start-Sleep (10 * $try) }
+    }
+    throw "gh $(($args | ForEach-Object { $_ }) -join ' ') failed"
+}
+# True when patch-data already holds this patch data (same checksum file and same size), so a rerun does not upload 38 MB again.
+function PatchDataUploaded {
+    $sum = & gh release download patch-data --pattern 'multipatch.jcpatch.sha256' --output - 2>$null
+    if ($LASTEXITCODE -ne 0 -or "$sum" -notmatch $expected) { return $false }
+    # Parsed here: Windows PowerShell drops the quotes inside a jq filter on the way to gh.
+    $remote = (& gh release view patch-data --json assets | ConvertFrom-Json).assets | Where-Object { $_.name -eq 'multipatch.jcpatch' -and $_.state -eq 'uploaded' }
+    return $remote -and $remote.size -eq (Get-Item -LiteralPath 'dist\multipatch.jcpatch').Length
+}
 
 $version = ([xml](Get-Content -LiteralPath 'GoW3Jacinto_Launcher.csproj' -Raw)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
 if (-not $version) { throw 'No <Version> in the csproj.' }
@@ -39,7 +55,7 @@ if ((Read-Host "Push main, tag $tag and publish? Type yes") -cne 'yes') { Write-
 RunGit push origin main | Out-Null
 # A prerelease: GitHub's "latest" and the launcher's update check both skip it.
 if (@(& gh release list --limit 100 --json tagName --jq '.[].tagName') -notcontains 'patch-data') { RunGh release create patch-data --prerelease --latest=false --title 'Patch data for CI' --notes 'multipatch.jcpatch, read by the build workflow. Not a launcher release.' }
-RunGh release upload patch-data @($assets.FullName) --clobber
+if (-not (PatchDataUploaded)) { RunGh release upload patch-data @($assets.FullName) --clobber } else { Write-Host 'patch-data already holds this patch data.' }
 RunGit tag -a $tag -m $tag
 RunGit push origin $tag | Out-Null
 

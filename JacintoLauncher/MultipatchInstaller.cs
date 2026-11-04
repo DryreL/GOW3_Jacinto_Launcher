@@ -804,16 +804,26 @@ internal static class MultipatchInstaller
         log("Uninstall complete.");
     }
 
-    // The running launcher lives inside the folder. Windows keeps it locked until the launcher closes, so a hidden shell retries for up to 15 minutes.
+    // The running launcher lives inside the folder and Windows keeps its file locked, so what it holds stays until a launcher
+    // started from anywhere else removes it (RemoveLeftoverLayout). A hidden shell that waits and deletes would do it sooner,
+    // but antivirus engines read exactly that as malware removing itself.
     private static void ScheduleLayoutRemoval(string game)
     {
         var layout = LayoutDir(game);
         var running = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
         if (!running.StartsWith(layout, StringComparison.OrdinalIgnoreCase)) { DeleteTree(layout); return; }
-        var start = OperatingSystem.IsWindows()
-            ? new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c for /l %i in (1,1,300) do @(ping -n 4 127.0.0.1 >nul & rmdir /s /q \"{layout}\" 2>nul & if not exist \"{layout}\" exit)") { CreateNoWindow = true, UseShellExecute = false, WorkingDirectory = game }
-            : new System.Diagnostics.ProcessStartInfo("/bin/sh", new[] { "-c", "sleep 3; rm -rf \"$0\"", layout }) { UseShellExecute = false, WorkingDirectory = game };
-        System.Diagnostics.Process.Start(start)?.Dispose();
+        foreach (var file in Directory.EnumerateFiles(layout, "*", SearchOption.AllDirectories))
+            try { File.SetAttributes(file, FileAttributes.Normal); File.Delete(file); } catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { } // The running launcher.
+    }
+
+    /// <summary>The JacintoLauncher folder an uninstall had to leave because the launcher in it was running. Removed at the next start from elsewhere.</summary>
+    internal static void RemoveLeftoverLayout(string game)
+    {
+        var layout = LayoutDir(game);
+        if (!Directory.Exists(layout) || File.Exists(IdentityPath(game)) || File.Exists(Marker(game))) return;
+        if (Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory).StartsWith(layout, StringComparison.OrdinalIgnoreCase)) return;
+        try { DeleteTree(layout); LauncherDiagnostics.Info("Removed the launcher folder an uninstall left behind: " + layout); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { LauncherDiagnostics.Info("Leftover launcher folder not removed yet: " + exception.Message); }
     }
 
     // ---------------------------------------------------------------- verify / repair

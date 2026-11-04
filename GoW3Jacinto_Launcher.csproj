@@ -20,7 +20,9 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <!-- Measured on Windows: 174 MB becomes 69 MB and the window opens 90 ms later (760 ms against 670 ms).
          Partial trimming removes unused framework code only. The JSON and COM features this code uses are kept on. -->
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- Not on Windows: Kaspersky, Avast and AVG flagged the compressed bundle as a packed trojan (VHO:Trojan.Win32.Yephiler.gen,
+         Win64:MalwareX-gen). Uncompressed, the executable is larger but its contents are plain to scanners. -->
+    <EnableCompressionInSingleFile Condition="!$(RuntimeIdentifier.StartsWith('win'))">true</EnableCompressionInSingleFile>
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>partial</TrimMode>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>

@@ -79,8 +79,9 @@ public class LauncherConfig
 				return JsonSerializer.Deserialize<LauncherConfig>(File.ReadAllText(path)) ?? new LauncherConfig();
 			}
 		}
-		catch
+		catch (System.Exception exception)
 		{
+			LauncherDiagnostics.Info("Launcher settings file not read, defaults are used: " + exception.Message);
 		}
 		return new LauncherConfig();
 	}
