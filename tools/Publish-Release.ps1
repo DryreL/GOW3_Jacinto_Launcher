@@ -79,7 +79,7 @@ Write-Host "  Commit:  $(RunGit log -1 --format='%h %s')"
 foreach ($asset in $assets) { Write-Host ("  {0,-48} {1,6:0} MB  {2:dd MMM HH:mm}" -f $asset.Name, ($asset.Length / 1MB), $asset.LastWriteTime) }
 Write-Host ""
 if ($DryRun) { Write-Host "Dry run: nothing was pushed. Notes: $notes"; return }
-if ((Read-Host "Push main, tag $tag and publish? Type yes") -cne 'yes') { Write-Host 'Stopped. Nothing was pushed.'; return }
+if ((Read-Host "Push main, tag $tag and publish? Type yes or $tag") -notin @('yes', $tag)) { Write-Host 'Stopped. Nothing was pushed.'; return }
 
 PushGit origin main
 # A prerelease: GitHub's "latest" and the launcher's update check both skip it.
