@@ -138,4 +138,15 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes Gears3_Multipatch_Launcher_*.zip SHA256SUMS.txt
+        # The draft is made first and the files go up separately, each tried three times: an upload right after the
+        # draft is created can get a 404 while GitHub is still settling it. A rerun reuses the draft.
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes
+          for file in Gears3_Multipatch_Launcher_*.zip SHA256SUMS.txt; do
+            for try in 1 2 3; do
+              gh release upload "$GITHUB_REF_NAME" "$file" --repo "$GITHUB_REPOSITORY" --clobber && break
+              [ "$try" = 3 ] && exit 1
+              echo "Upload of $file failed (try $try of 3), retrying in $((15 * try)) s..."; sleep $((15 * try))
+            done
+          done
