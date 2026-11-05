@@ -31,8 +31,10 @@ PLATFORM NOTES
   unpack to a temporary folder.
 - Linux and Steam Deck: you need Proton, umu-launcher or Wine to play. If the file does
   not open, run: chmod +x GoW3Jacinto_Launcher
-- macOS: you need Wine, or another runner set in Settings. If the launcher is blocked,
-  run: xattr -dr com.apple.quarantine <this folder>
+- macOS: open the .dmg and drag the app to Applications (one app for Apple Silicon and Intel).
+  You need Wine, or another runner set in Settings. If macOS still says it cannot verify the app,
+  open System Settings > Privacy & Security and choose "Open Anyway", or run:
+  xattr -dr com.apple.quarantine "/Applications/Gears of War 3 Jacinto Launcher.app"
 
 HD TEXTURES PACK
 Version 1.3 or newer can be installed before or after the Multipatch, in any order.

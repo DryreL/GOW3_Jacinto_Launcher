@@ -36,8 +36,33 @@ internal static class LauncherDiagnostics
 
     /// <summary>Goes to the local log only: what the player or their PC must change is not a launcher bug, and the launcher already says what to do.</summary>
     internal static bool Reportable(Exception exception) =>
-        exception is not (ArgumentException or UserActionException or TimeoutException or System.Net.Http.HttpRequestException or System.Threading.Tasks.TaskCanceledException)
-        && exception.HResult != VirusBlocked;
+        // Win32Exception: antivirus, elevation or a missing file at process start. COMException: the desktop shortcut.
+        exception is not (ArgumentException or UserActionException or TimeoutException or System.Net.Http.HttpRequestException or System.Threading.Tasks.TaskCanceledException or System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException)
+        && !LooksLikeAntivirus(exception) && !LooksLikePermission(exception);
+
+    // The files antivirus programs quarantine: JacintoNet's Winsock proxy (a Kaspersky "Yephiler" heuristic hit), its helper, the patched game and the launcher.
+    private static readonly string[] Flagged = { "wsock32.dll", "steam_api64.dll", "GOW3Helper.dll", "GearGame.exe", "GearsOfWar3.exe", "GoW3Jacinto_Launcher" };
+
+    /// <summary>A file operation an antivirus program most likely stopped: Windows' "contains a virus" code, or access denied / missing on one of the flagged files.</summary>
+    internal static bool LooksLikeAntivirus(Exception exception) =>
+        exception.HResult == VirusBlocked || exception.InnerException is { } inner && inner.HResult == VirusBlocked
+        || exception is IOException or UnauthorizedAccessException && Flagged.Any(name => exception.Message.Contains(name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The system said no: a folder that is read-only, owned by another user, or protected (Program Files, OneDrive, a Linux SD card). A setting of the player's PC, not a launcher bug.</summary>
+    internal static bool LooksLikePermission(Exception exception) =>
+        exception is UnauthorizedAccessException || exception is IOException && exception.Message.Contains("Permission denied", StringComparison.OrdinalIgnoreCase);
+
+    internal static string PermissionAdvice(Exception exception) =>
+        "The launcher is not allowed to change a file or folder: it is read-only, belongs to another user, or is protected by the system (for example Program Files, OneDrive, or a game on an SD card or Windows drive mounted read-only on Linux). "
+        + "Move the game or the launcher to a folder you own, such as C:\\Games or your home folder, or fix the folder's permissions, then try again. " + exception.Message;
+
+    /// <summary>What the player is told instead of a bare "access denied", with the code to quote.</summary>
+    internal static string AntivirusAdvice(Exception exception) =>
+        $"Your antivirus program most likely blocked or removed a launcher or game file (error code 0x{exception.HResult:X8}). The Multipatch files are not harmful: Kaspersky, Avast, AVG and Windows Security sometimes flag the JacintoNet network file (wsock32.dll) by mistake. "
+        + "Open your antivirus, restore the file from quarantine or protection history, add the game folder to its exclusions, then try again. " + exception.Message;
+
+    /// <summary>The macOS package is a signed .app: files may not be written into it, and macOS runs a downloaded one from a read-only copy.</summary>
+    internal static bool InAppBundle => OperatingSystem.IsMacOS() && AppContext.BaseDirectory.Contains(".app/Contents/", StringComparison.Ordinal);
 
     private static readonly object Sync = new();
     internal static string DirectoryPath => Environment.GetEnvironmentVariable("JACINTO_LOG_DIR") ?? (resolved ??= Resolve());
@@ -49,6 +74,7 @@ internal static class LauncherDiagnostics
         var beside = Path.Combine(AppContext.BaseDirectory, "logs");
         try
         {
+            if (InAppBundle) throw new UnauthorizedAccessException("Inside the app bundle.");
             Directory.CreateDirectory(beside);
             var probe = Path.Combine(beside, ".write-test");
             File.WriteAllText(probe, "");
@@ -72,7 +98,8 @@ internal static class LauncherDiagnostics
     {
         Write("ERROR", operation + Environment.NewLine + exception);
         ErrorReported?.Invoke(operation, exception);
-        ErrorShown?.Invoke(operation, exception);
+        // The window says what the likely cause is; the original error stays inside it for Copy details.
+        ErrorShown?.Invoke(operation, LooksLikeAntivirus(exception) ? new IOException(AntivirusAdvice(exception), exception) : LooksLikePermission(exception) ? new IOException(PermissionAdvice(exception), exception) : exception);
     }
 
     internal static string? LatestLog() => Directory.Exists(DirectoryPath) ? new DirectoryInfo(DirectoryPath).EnumerateFiles("*.log").OrderBy(f => f.LastWriteTimeUtc).LastOrDefault()?.FullName : null;

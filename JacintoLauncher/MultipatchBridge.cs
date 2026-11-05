@@ -228,7 +228,7 @@ internal static class MultipatchBridge
     internal static void LimitAudioChannelsForVulkan(string gameDir)
     {
         var graphics = GameLayout.ToolFilesDir(gameDir) is { } files ? Path.Combine(files, "graphics.json") : null;
-        if (graphics is not null && Dxvk.Installed(gameDir) && JsonNode.Parse(File.ReadAllText(graphics))?["AudioChannels"] is JsonValue channels && channels.TryGetValue<int>(out var count) && count > 32)
+        if (graphics is not null && Dxvk.Installed(gameDir) && JsonNode.Parse(File.ReadAllText(graphics))?["AudioChannels"] is JsonValue channels && channels.TryGetValue<double>(out var count) && count > 32)
             ApplyGraphicsThroughMultipatch(gameDir, new JsonObject { ["AudioChannels"] = 32 });
     }
 

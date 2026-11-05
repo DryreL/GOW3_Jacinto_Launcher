@@ -26,7 +26,8 @@ public class LauncherConfig
 	public bool BackupSaveOnLaunch { get; set; } = true;
 
 	// The close button sends the launcher to the system tray, so the online count keeps it.
-	public bool CloseToTray { get; set; } = true;
+	// Windows only by default: many Linux desktops (and the Steam Deck game mode) have no tray, so a hidden window could never be brought back.
+	public bool CloseToTray { get; set; } = System.OperatingSystem.IsWindows();
 
 	// Off by default: a second start brings the open launcher forward instead.
 	public bool AllowMultipleInstances { get; set; }
@@ -66,6 +67,7 @@ public class LauncherConfig
 	{
 		var beside = Path.Combine(exeDir, "GoW3Jacinto_Launcher.json");
 		var fallback = Fallback(exeDir);
+		if (LauncherDiagnostics.InAppBundle) return fallback; // Nothing may be written into a signed .app.
 		return File.Exists(fallback) && (!File.Exists(beside) || File.GetLastWriteTimeUtc(fallback) > File.GetLastWriteTimeUtc(beside)) ? fallback : beside;
 	}
 
@@ -116,6 +118,7 @@ public class LauncherConfig
 
 	private static void Write(string destination, string json)
 	{
+		Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
 		string temporary = destination + ".tmp-" + System.Guid.NewGuid().ToString("N");
 		try
 		{

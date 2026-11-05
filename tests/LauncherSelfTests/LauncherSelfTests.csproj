@@ -4,6 +4,7 @@
     <Compile Include="..\..\JacintoLauncher\MultipatchBridge.cs" Link="MultipatchBridge.cs" />
     <Compile Include="..\..\JacintoLauncher\SettingsEngine.cs" Link="SettingsEngine.cs" />
     <Compile Include="..\..\JacintoLauncher\GameRunner.cs" Link="GameRunner.cs" />
+    <Compile Include="..\..\JacintoLauncher\SystemInfo.cs" Link="SystemInfo.cs" />
     <Compile Include="..\..\JacintoLauncher\LauncherDiagnostics.cs" Link="LauncherDiagnostics.cs" />
     <Compile Include="..\..\JacintoLauncher\LauncherConfig.cs" Link="LauncherConfig.cs" />
     <Compile Include="..\..\JacintoLauncher\GameLayout.cs" Link="GameLayout.cs" />

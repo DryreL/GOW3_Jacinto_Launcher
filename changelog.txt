@@ -5,7 +5,21 @@ Game: Gears of War 3 Jacinto Build v1.1.1
 NexusMods Page: https://www.nexusmods.com/gearsofwar3/mods/27
 =================================================================
 
-v0.3.9 (03 Nov 2026, 11:21 AM)
+v0.4.0 (05 Nov 2026, 10:32 AM)
+- macOS: one download for Apple Silicon and Intel, a signed and notarized .dmg with a normal app inside (drag it to Applications). This fixes "Apple could not verify ... is free of malware". The app keeps its settings and log in your user folder and, when a new version is out, opens the download page.
+- Settings: pressing the tab that is already open (Controls included) no longer reloads it, so unsaved changes stay.
+- Resolution: your display's own size says (Native); sizes above it say (DSR) on NVIDIA and (VSR) on AMD.
+- Hungarian: corrected translations from HJ. HJ is credited for the Hungarian translation.
+- Error reports now say which PC they come from: operating system (Windows 10/11, SteamOS, Linux, macOS, Proton/Wine), processor, memory and graphics card. Nothing that names you or your PC is sent, and nothing is sent when error reports are off.
+- Error reporting starts before anything else in the launcher, so a failure at the very first step is reported too.
+- Antivirus: when a program such as Windows Security, Kaspersky (Yephiler), Avast or AVG blocks or removes wsock32.dll, steam_api64.dll, the patched game or the launcher, the launcher shows the error code and what to do (restore it from quarantine, add the game folder to the exclusions) instead of "access denied", and does not send it as a launcher error.
+- Fixed the launcher crashing at start on Linux / Steam Deck (v0.3.9): the "show the open launcher" signal used a Windows-only feature. On Linux and macOS a second start now simply exits.
+- Linux / macOS: closing the window no longer hides it in a tray that may not exist; "Minimize to the system tray" is on by default on Windows only, and while the game runs the launcher minimizes instead.
+- Fewer false error reports: antivirus or elevation blocking a start, a failed desktop shortcut and a hand-edited graphics.json are explained to the player instead of reported; choosing a folder that no longer exists no longer throws.
+- If the launcher itself crashes, a window shows the error with Copy details. When error reports are on and there is internet, the report is sent automatically; otherwise the window asks for it to be reported on the NexusMods bug page. If even that window cannot open, a system message box is shown.
+- Fixed the installation audit and Settings failing with "FpsLimit must be an integer" when graphics.json holds whole numbers written as 20.0 instead of 20.
+
+v0.3.9 (04 Nov 2026, 11:21 AM)
 - Linux / Steam Deck: the free space check reads the partition that holds the game (for example /home), not the small system partition, so the install no longer stops with "At least 2 GB of free space is required" (issue #1).
 - Fixed "The update could not be installed" when the launcher file was renamed (for example "GoW3Jacinto_Launcher_v0.3.8.exe"). An update now replaces only the launcher's own files and keeps the file name, so other files in the same folder are never touched.
 - Fixed a game crash a few seconds into the campaign: the FXAA / Temporal AA setting stopped the game, so it is gone and a saved choice turns off by itself.
@@ -48,7 +62,6 @@ v0.3.9 (03 Nov 2026, 11:21 AM)
 - A Multi Patch Tool installation made on Linux or SteamOS is now recognized when the launcher is added to it.
 - Offline players no longer see an error when an update brings a newer JacintoNet.
 - If an antivirus takes the launcher copied to the game folder, Continue says so.
-- Optimization: The launcher consumes less RAM while in the background.
 
 v0.3.8 (02 Nov 2026, 1:22AM)
 - New launcher: a native application for Windows, Linux, Steam Deck and macOS (Avalonia, .NET 10). No .NET, PowerShell or .bat file is needed to install or play.

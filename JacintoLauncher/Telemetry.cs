@@ -34,13 +34,15 @@ internal static class Telemetry
 
     internal static void Start(LauncherConfig config, string? game)
     {
-        Stop();
+        // Called first thing at startup (so no crash is missed) and again when the window knows the game folder or the settings change:
+        // what already runs keeps running, only the scrubbed names change.
         gameDir = game;
         playerName = config.PlayerName;
         enabled = config.TelemetryEnabled && Environment.GetEnvironmentVariable("DO_NOT_TRACK") != "1";
-        if (!enabled) return;
+        if (!enabled) { Stop(); return; }
+        _ = System.Threading.Tasks.Task.Run(SystemInfo.Get); // Looked up now, so a crash report does not wait for it.
         var dsn = Key("SentryDsn", "JACINTO_SENTRY_DSN");
-        if (dsn.Length != 0)
+        if (dsn.Length != 0 && sentry is null)
         {
             sentry = SentrySdk.Init(options =>
             {
@@ -54,6 +56,7 @@ internal static class Telemetry
                 {
                     if (evt.Message?.Formatted is { } formatted) evt.Message = Scrub(formatted);
                     foreach (var exception in evt.SentryExceptions ?? Enumerable.Empty<Sentry.Protocol.SentryException>()) exception.Value = exception.Value is null ? null : Scrub(exception.Value);
+                    Describe(evt);
                     return evt;
                 });
             });
@@ -66,11 +69,37 @@ internal static class Telemetry
         }
         var key = Key("AptabaseKey", "JACINTO_APTABASE_KEY");
         var host = key.Split('-') is [_, var region, _] ? region switch { "EU" => "https://eu.aptabase.com", "US" => "https://us.aptabase.com", _ => null } : null;
-        if (host is not null)
+        if (host is not null && aptabase is null)
         {
             aptabase = new HttpClient { BaseAddress = new Uri(Environment.GetEnvironmentVariable("JACINTO_APTABASE_URL") ?? host), Timeout = TimeSpan.FromSeconds(10) };
             aptabase.DefaultRequestHeaders.Add("App-Key", key);
         }
+    }
+
+    /// <summary>Operating system, processor, memory and graphics card on every event, so "Unknown OS" never shows. Nothing that names the player or the PC.</summary>
+    private static void Describe(SentryEvent evt)
+    {
+        try
+        {
+            var info = SystemInfo.Get();
+            evt.Contexts.OperatingSystem.Name = info.OsName;
+            evt.Contexts.OperatingSystem.Version = info.OsVersion;
+            evt.Contexts.Device.Architecture = RuntimeInformation.OSArchitecture.ToString();
+            evt.Contexts.Device.ProcessorCount = info.Cores;
+            evt.Contexts.Device.CpuDescription = info.Cpu;
+            if (info.RamBytes > 0) evt.Contexts.Device.MemorySize = info.RamBytes;
+            if (info.Gpu is not null)
+            {
+                evt.Contexts.Gpu.Name = info.Gpu; evt.Contexts.Gpu.VendorName = info.GpuVendor; evt.Contexts.Gpu.Version = info.GpuDriver;
+                if (info.GpuMemoryMb > 0) evt.Contexts.Gpu.MemorySize = (int)Math.Min(int.MaxValue, info.GpuMemoryMb);
+            }
+            evt.SetTag("os", info.OsName);
+            evt.SetTag("ram_gb", Math.Round(info.RamBytes / 1073741824.0).ToString(CultureInfo.InvariantCulture));
+            if (info.Gpu is not null) evt.SetTag("gpu", info.Gpu);
+            if (info.OtherGpus is not null) evt.SetExtra("other_gpus", info.OtherGpus);
+            evt.SetTag("wine", GameRunner.InsideWine ? "yes" : "no");
+        }
+        catch (Exception) { } // A report without hardware lines is still a report.
     }
 
     internal static void Stop()
@@ -83,6 +112,26 @@ internal static class Telemetry
     internal static void CaptureFatal(Exception exception) { if (sentry is not null) { SentrySdk.CaptureException(exception); SentrySdk.Flush(TimeSpan.FromSeconds(3)); } }
 
     internal static bool CrashReportsOn => sentry is not null;
+
+    /// <summary>
+    /// A launcher crash, sent now (before the process dies). True only when reports are on, the server answers and the event was handed over;
+    /// false means the player has to report it by hand.
+    /// </summary>
+    internal static bool SendCrash(LauncherConfig config, Exception exception)
+    {
+        if (sentry is null) Start(config, gameDir);
+        if (sentry is null) return false;
+        var uri = new Uri(Key("SentryDsn", "JACINTO_SENTRY_DSN"));
+        try
+        {
+            using var probe = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
+            using var answer = probe.GetAsync(uri.Scheme + "://" + uri.Host, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
+        }
+        catch (Exception probeFailure) when (probeFailure is HttpRequestException or TaskCanceledException) { return false; }
+        SentrySdk.CaptureException(exception);
+        SentrySdk.FlushAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+        return true;
+    }
 
     /// <summary>A game crash found by GameCrash, reported apart from launcher errors so the two never group together.</summary>
     internal static void CaptureGameCrash(GameCrash.Report report)

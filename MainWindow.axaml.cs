@@ -372,6 +372,8 @@ public partial class MainWindow : Window
     // While the game runs the launcher waits in the tray, and comes back when the game closes.
     private void HideToTray()
     {
+        // No tray on Linux: without a StatusNotifier host a hidden window cannot be brought back. Minimize instead.
+        if (!OperatingSystem.IsWindows()) { WindowState = WindowState.Minimized; return; }
         try
         {
             if (tray is null)
@@ -499,8 +501,13 @@ public partial class MainWindow : Window
 
     private async Task<string?> PickGameFolderAsync()
     {
-        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = L.T("Choose game folder"), AllowMultiple = false });
-        var picked = folders.Count == 0 ? null : folders[0].TryGetLocalPath();
+        string? picked;
+        try
+        {
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = L.T("Choose game folder"), AllowMultiple = false });
+            picked = folders.Count == 0 ? null : folders[0].TryGetLocalPath();
+        }
+        catch (ArgumentException) { StatusText.Text = L.T("GearGame.exe was not found in that folder."); return null; } // The picker returned a folder that does not exist (a disconnected or virtual location).
         if (picked is null) return null;
         var found = GameLayout.ResolveGameDir(picked);
         if (found is null) { StatusText.Text = L.T("GearGame.exe was not found in that folder."); return null; }
@@ -863,6 +870,8 @@ public partial class MainWindow : Window
     private async Task StartUpdateAsync()
     {
         if (release is null) return;
+        // A signed .app cannot replace its own files: the new version is a new download.
+        if (LauncherDiagnostics.InAppBundle) { try { LauncherDiagnostics.Open("https://github.com/" + LauncherUpdate.Repository + "/releases/latest"); } catch (Exception exception) { LauncherDiagnostics.Info("Release page not opened: " + exception.Message); } return; }
         UpdateButton.IsEnabled = false;
         try
         {

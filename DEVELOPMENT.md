@@ -94,7 +94,10 @@ GitHub cannot issue a Windows code signing certificate.
   4. Add the `SIGNPATH_API_TOKEN` secret and `SIGNPATH_ORGANIZATION_ID` variable in GitHub. The workflow's signing step then runs by itself on every `v*` tag.
 
   Signing covers the launcher only. `wsock32.dll` and `GOW3Helper.dll` are not built here, so they cannot go through this pipeline until their sources are in the repository.
-- **macOS**: on every `v*` tag, CI signs with a Developer ID, adds the secure timestamp and notarizes (`tools/Sign-macOS.sh`) once these five GitHub secrets exist. Without them the build stays unsigned and users run `xattr -dr com.apple.quarantine` on the folder.
+- **macOS**: the download is ONE `Gears3_Multipatch_Launcher_macOS.dmg` for Apple Silicon and Intel, built by the `macos-package` job (`tools/Package-macOS.sh`). It holds a `.app` whose main executable is a small script that starts the arm64 or the x64 single-file build inside it (a .NET single-file bundle cannot be merged with `lipo`: its data sits after the Mach-O). With these five GitHub secrets the script signs every Mach-O with a Developer ID and the hardened runtime, notarizes and staples the app, then signs, notarizes and staples the dmg. Without them the app is signed ad hoc and the log warns; users then approve it in Privacy & Security. The old bare-executable zip could not carry a notarization ticket, which is why Gatekeeper said "Apple could not verify ... is free of malware" even for signed builds. The per-architecture zips stay in the release for the in-app updater (it downloads without a quarantine flag); a launcher running from inside the .app does not update itself, it opens the release page.
+
+  To try the macOS build without a release: GitHub > Actions > **macos-test** > Run workflow. It builds only the .dmg with the same signing and notarization, and the run page offers it as the artifact `macOS-test-dmg` (7 days). Download it on the Mac in a browser: that sets the same quarantine flag a player's download has, so opening it there is the real Gatekeeper test. Turn "notarize" off to check only that signing works.
+
 
   | Secret | Value |
   |---|---|
@@ -119,6 +122,8 @@ VirusTotal, looked up by SHA-256 on 2026-11-01:
 The Yephiler detection is on `wsock32.dll`, not the launcher, so no launcher change can clear it. The file is a Winsock proxy that imports `GetAsyncKeyState` (the F8 invite key) and `VirtualProtect`, and Kaspersky describes the Yephiler family as a keylogging spy trojan. A heuristic match on that shape is likely, though only Kaspersky can confirm the cause.
 
 Since JacintoNet 0.3.6 rebuilt on 2026-11-01 (`C49177AA...`), F8 uses `RegisterHotKey`, held only while the game has focus, and `GetAsyncKeyState` is gone. `VirtualProtect` remains: the static C runtime imports it. Whether the detection clears is unconfirmed until the new file is scanned. If it remains, report it at https://opentip.kaspersky.com/. A rebuild changes the hash, so a verdict does not carry over to the next build unless the file is signed.
+
+When an engine quarantines `wsock32.dll`, `steam_api64.dll` or the patched `GearGame.exe`, the launcher sees `0x800700E1` ("contains a virus") or an access-denied / missing file. `LauncherDiagnostics.LooksLikeAntivirus` recognises both, the error window then names the likely cause and the fix, and the event is not sent to Sentry. macOS has no antivirus step: an unsigned or un-notarized download is stopped by Gatekeeper ("damaged"), which `packaging/INSTALL_TUTORIAL.txt` answers with `xattr -dr com.apple.quarantine`; signing and notarizing (above) is the real fix. Linux has no scan; a zip that lost its execute bit gives "Permission denied", which `Build-Package.ps1` prevents by writing Unix modes.
 
 Launcher choices that keep its own score clean: no PowerShell at all, no runtime C# compilation, no Native AOT, full version metadata. Re-scan every release build, because the new binaries have no reputation yet.
 

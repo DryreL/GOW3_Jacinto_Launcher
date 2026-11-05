@@ -56,7 +56,7 @@ internal sealed class SettingsEngine
         if (!File.Exists(path)) { if (optional) return new JsonObject(); throw new FileNotFoundException("Required file is missing: " + path, path); }
         JsonNode? node;
         try { node = JsonNode.Parse(File.ReadAllText(path, Encoding.UTF8)); }
-        catch (JsonException exception) { throw new InvalidDataException($"Invalid JSON at '{path}': {exception.Message}"); }
+        catch (JsonException exception) { throw new UserActionException($"Invalid JSON at '{path}': {exception.Message} The file was edited or damaged; fix it or restore it from a backup."); }
         return node as JsonObject ?? throw new InvalidDataException($"Expected a JSON object at '{path}'.");
     }
 
@@ -115,17 +115,21 @@ internal sealed class SettingsEngine
     private static string Str(JsonObject o, string name) => o[name] is JsonValue v ? v.TryGetValue<string>(out var s) ? s : v.ToJsonString().Trim('"') : "";
     private static bool? Flag(JsonObject o, string name) => o[name] is JsonValue v && v.TryGetValue<bool>(out var b) ? b : null;
     private static bool On(JsonObject o, string name) => Flag(o, name) == true;
-    private static int Num(JsonObject o, string name)
+    // Whole numbers written as 20, 20.0 or "20" all count; the Multipatch tool and old launchers wrote floats.
+    private static bool TryInt(JsonObject o, string name, out int result)
     {
-        if (o[name] is JsonValue v)
+        result = 0;
+        if (o[name] is not JsonValue v || Flag(o, name) is not null) return false;
+        if (v.TryGetValue<int>(out result)) return true;
+        double d;
+        if (v.TryGetValue<double>(out d) || (v.TryGetValue<string>(out var s) && double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out d)))
         {
-            if (v.TryGetValue<int>(out var i)) return i;
-            if (v.TryGetValue<string>(out var s) && int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out i)) return i;
+            if (d == Math.Floor(d) && Math.Abs(d) <= int.MaxValue) { result = (int)d; return true; }
         }
-        return 0;
+        return false;
     }
-    private static bool IsInt(JsonObject o, string name) =>
-        o[name] is JsonValue v && Flag(o, name) is null && (v.TryGetValue<int>(out _) || (v.TryGetValue<string>(out var s) && int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)));
+    private static int Num(JsonObject o, string name) => TryInt(o, name, out var i) ? i : 0;
+    private static bool IsInt(JsonObject o, string name) => TryInt(o, name, out _);
     private static string[] Disabled(JsonObject o) => o["Disabled"] is JsonArray a ? a.Select(n => n is JsonValue v && v.TryGetValue<string>(out var s) ? s : "").ToArray() : Array.Empty<string>();
 
     private static (int X, int Y) Resolution(JsonObject settings)

@@ -1,13 +1,14 @@
 LAUNCHER
 refresh50 - Created the launcher and released it with v0.3.7
 DryreL - Launcher developer since v0.3.8
+HJ - Hungarian translation of the launcher
 
 refresh50, v0.3.7:
 - First Windows launcher, and the Offline and Steam modes on one installation
 - Made the Multipatch work with the launcher, and made the install safe after a power loss
 - Graphics, audio, controls and save backups in the launcher; interface in 8 languages
 
-DryreL, v0.3.8:
+DryreL, v0.3.8+:
 - New native launcher for Windows, Linux, Steam Deck and macOS: no .NET, PowerShell or .bat needed
 - One-click install from verified patch data, with Verify, Repair and Uninstall
 - Updates that bring new fixes and keep your settings
@@ -42,7 +43,7 @@ LukeBoya - Act 3 to Act 4 Transition (Objective Failed Bugfix)
 SUPPORTERS
 Rabbit77rage
 Mark Anthony
-You never need to donate to use this mod. Supporters give purely because they want to. This is a non-profit project.
+This is a non-profit project. You never need to donate to use this mod. Supporters give purely because they want to.
 
 JACINTO BUILD
 Gears of War 3 Jacinto v1.1.1 (UNOFFICIAL PC BUILD)

@@ -7,9 +7,12 @@ echo   Gears of War 3 Jacinto Launcher - build
 echo.
 echo   1. Windows x64
 echo   2. Linux x64 / Steam Deck
-echo   3. macOS Apple Silicon
-echo   4. macOS Intel
+echo   3. macOS Apple Silicon  (test build, not signed)
+echo   4. macOS Intel          (test build, not signed)
 echo   5. All
+echo.
+echo   The release macOS download is ONE signed and notarized .dmg for both Macs. It is built by GitHub
+echo   Actions on a Mac (tools\Package-macOS.sh) when Release.bat pushes the tag, never here: Windows cannot sign for macOS.
 echo.
 set /p "CHOICE=Choose 1-5: "
 set "RIDS="

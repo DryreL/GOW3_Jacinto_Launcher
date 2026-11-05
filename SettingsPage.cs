@@ -52,8 +52,11 @@ internal sealed class SettingsPage : UserControl
         Show("general");
     }
 
+    private string? shown;
+
     private void Select(ToggleButton button, string section)
     {
+        if (section == shown) { button.IsChecked = true; return; } // Already open: a second click keeps the tab and its unsaved edits (Controls is rebuilt on every visit).
         foreach (var other in tabs) other.Button.IsChecked = other.Button == button;
         Telemetry.Track("settings_tab", "tab", section);
         Show(section);
@@ -94,6 +97,7 @@ internal sealed class SettingsPage : UserControl
 
     private void Show(string section)
     {
+        shown = section;
         Motion.Open(host, "settings " + section);
         if (section == "controls") { host.Content = new ControlsView(gameDir); return; }
         // Kept between tabs: unsaved changes on one tab must survive a look at another.

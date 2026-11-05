@@ -1,0 +1,58 @@
+name: macos-test
+# Builds only the macOS download, signed with your Apple secrets, to try on a real Mac without making a release.
+# Run it: GitHub > Actions > macos-test > Run workflow. When it finishes, open the run and download the artifact
+# "macOS-test-dmg" (a zip holding the .dmg). Downloading it in a browser puts the same quarantine flag on it that a
+# player's download gets, so opening it on the Mac is the real Gatekeeper test.
+on:
+  workflow_dispatch:
+    inputs:
+      notarize:
+        description: 'Notarize and staple with Apple (about 2-15 minutes). Off = signed only, Gatekeeper will still object.'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  macos-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Publish both Macs
+        shell: bash
+        env:
+          JacintoSentryDsn: ${{ secrets.SENTRY_DSN }}
+          JacintoAptabaseKey: ${{ secrets.APTABASE_APP_KEY }}
+        run: |
+          for rid in osx-arm64 osx-x64; do
+            dotnet publish GoW3Jacinto_Launcher.csproj -c Release -r $rid -o mac/$rid
+          done
+      - name: Build, sign and notarize the app and disk image
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SKIP_NOTARIZE: ${{ inputs.notarize && '0' || '1' }}
+        run: |
+          chmod +x mac/*/GoW3Jacinto_Launcher
+          version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' GoW3Jacinto_Launcher.csproj | head -1)"
+          bash tools/Package-macOS.sh mac/osx-arm64 mac/osx-x64 dist-mac "$version"
+      - name: Show what Gatekeeper and codesign say
+        shell: bash
+        run: |
+          app="dist-mac/Gears of War 3 Jacinto Launcher.app"
+          codesign -dvv "$app" 2>&1 | grep -E "Authority|TeamIdentifier|flags|Timestamp" || true
+          xcrun stapler validate "$app" || echo "The app has no stapled ticket (expected when notarization is off or no secrets)."
+          spctl --assess --type execute -vv "$app" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macOS-test-dmg
+          path: dist-mac/*.dmg
+          retention-days: 7

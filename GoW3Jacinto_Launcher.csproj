@@ -35,7 +35,7 @@
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <TieredPGO>false</TieredPGO>
     <!-- File metadata: unidentified binaries score worse with antivirus heuristics. -->
-    <Version>0.3.9</Version>
+    <Version>0.4.0</Version>
     <Company>Project Jacinto Community</Company>
     <Product>Gears of War 3 Jacinto Multipatch Launcher</Product>
     <AssemblyTitle>Gears of War 3 Jacinto Multipatch Launcher</AssemblyTitle>

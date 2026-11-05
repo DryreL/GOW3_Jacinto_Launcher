@@ -136,6 +136,11 @@ try
     Check(File.ReadAllText(ini1).Contains("ResX=2560")&&File.ReadAllText(ini1).Contains("MaxSmoothedFrameRate=240")&&File.ReadAllText(ini1).Contains("MaxMultiSamples=4")&&File.ReadAllText(ini1).Contains("MaxAnisotropy=16"),"effective INI values");
     Check(File.ReadAllText(camera).Contains("BaseFOV=100"),"effective FOV"); Check(File.ReadAllText(start).Contains("-ResX=2560 -ResY=1440"),"effective launch resolution args");
     Check(JsonNode.Parse(File.ReadAllText(graphics))!["FutureField"]!["Keep"]!.GetValue<bool>(),"unknown field preserved after save");
+    // v0.4.0: whole numbers written as 20.0 (older tools wrote floats) must pass the audit.
+    var graphicsBefore=File.ReadAllText(graphics); var floatJson=JsonNode.Parse(graphicsBefore)!.AsObject(); floatJson["FpsLimit"]=JsonNode.Parse("240.0"); floatJson["AudioChannels"]=JsonNode.Parse("32.0"); floatJson["MasterVolume"]=JsonNode.Parse("100.0");
+    File.WriteAllText(graphics,floatJson.ToJsonString()); Check(MultipatchBridge.LoadSettingsFromMultipatch(game)["Graphics"]?["FpsLimit"] is not null,"integer written as 240.0 is accepted"); File.WriteAllText(graphics,graphicsBefore);
+    var machine=SystemInfo.Get(); Check(machine.OsName!="Unknown"&&machine.RamBytes>0&&machine.Cores>0,"system info: OS, RAM and cores are known ("+machine.OsName+", "+machine.Gpu+")");
+    Check(LauncherDiagnostics.LooksLikeAntivirus(new UnauthorizedAccessException("Access to the path 'wsock32.dll' is denied."))&&!LauncherDiagnostics.LooksLikeAntivirus(new IOException("disk full")),"antivirus-blocked file is recognised");
     var after1=Hash(ini1); var repeat=MultipatchBridge.ApplyGraphicsThroughMultipatch(game,request); Check(Hash(ini1)==after1,"idempotent repeat apply");
     var iniText=File.ReadAllText(ini1); File.WriteAllText(ini1,iniText.Replace("ResX=2560","ResX=1280"));
     var audit=InstallAudit.Run(game).Where(f=>f.Problem is not null).ToList();

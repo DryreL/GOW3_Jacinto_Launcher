@@ -169,18 +169,25 @@ public partial class GameSettingsView : UserControl
         var n = limit;
         var fits = CommonResolutions.Where(r => n is not { } l || (r.X <= l.X && r.Y <= l.Y)).Concat(above).Distinct().ToList();
         if (native is { } own && !fits.Contains(own)) fits.Add(own);
+        // Native and DSR / VSR sizes say so in the list; the saved value stays a plain "WxH" (see Plain).
+        var vendor = above.Count != 0 || fits.Any(r => native is { } p && (r.X > p.X || r.Y > p.Y)) ? SystemInfo.Get().GpuVendor ?? "" : "";
+        var upscale = vendor.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase) ? "DSR" : vendor.Contains("AMD", StringComparison.OrdinalIgnoreCase) || vendor.Contains("Advanced Micro", StringComparison.OrdinalIgnoreCase) ? "VSR" : "DSR/VSR";
+        string Label((int X, int Y) r) => Text(r) + (native is { } p && r == p ? " (" + L.T("Native") + ")" : native is { } q && (r.X > q.X || r.Y > q.Y) ? " (" + upscale + ")" : "");
         var saved = System.Text.RegularExpressions.Regex.Match(stored, @"^(\d{3,5})x(\d{3,5})$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (saved.Success)
         {
             var value = (X: int.Parse(saved.Groups[1].Value, CultureInfo.InvariantCulture), Y: int.Parse(saved.Groups[2].Value, CultureInfo.InvariantCulture));
-            if (n is not { } l || (value.X <= l.X && value.Y <= l.Y)) { if (!fits.Contains(value)) fits.Add(value); stored = Text(value); }
-            else stored = nativeResolution!;
+            if (n is not { } l || (value.X <= l.X && value.Y <= l.Y)) { if (!fits.Contains(value)) fits.Add(value); stored = Label(value); }
+            else stored = Label(native!.Value);
         }
-        else stored = nativeResolution ?? "1920x1080";
-        ResolutionBox.ItemsSource = fits.OrderBy(r => r.X).ThenBy(r => r.Y).Select(Text).Append(L.T("Custom")).ToArray();
+        else stored = native is { } own2 ? Label(own2) : "1920x1080";
+        ResolutionBox.ItemsSource = fits.OrderBy(r => r.X).ThenBy(r => r.Y).Select(Label).Append(L.T("Custom")).ToArray();
         ResolutionBox.SelectedItem = stored;
         static string Text((int X, int Y) r) => r.X.ToString(CultureInfo.InvariantCulture) + "x" + r.Y.ToString(CultureInfo.InvariantCulture);
     }
+
+    /// <summary>"1920x1080 (Native)" is "1920x1080"; "Custom" stays as it is.</summary>
+    private static string Plain(string? item) => System.Text.RegularExpressions.Regex.Match(item ?? "", @"^\d+x\d+") is { Success: true } m ? m.Value : item ?? "";
 
     private bool CustomResolution => ResolutionBox.SelectedItem as string == L.T("Custom");
 
@@ -188,7 +195,7 @@ public partial class GameSettingsView : UserControl
     private void ShowCustomResolution()
     {
         CustomResolutionRow.IsVisible = CustomResolution;
-        if (CustomResolution || ResolutionBox.SelectedItem is not string size || size.Split('x') is not [var x, var y]) return;
+        if (CustomResolution || ResolutionBox.SelectedItem is not string size || Plain(size).Split('x') is not [var x, var y]) return;
         CustomWidthBox.Text = x; CustomHeightBox.Text = y;
     }
 
@@ -213,7 +220,7 @@ public partial class GameSettingsView : UserControl
 
     private JsonObject BuildRequest()
     {
-        var resolution = CustomResolution ? CustomSize() : ResolutionBox.SelectedItem as string ?? "native";
+        var resolution = CustomResolution ? CustomSize() : Plain(ResolutionBox.SelectedItem as string ?? "native");
         if (LimitValue(FpsBox.Text, "Unlimited") is not { } fps) throw new ArgumentException("FPS limit must be an integer from 0 to 500.");
         if (LimitValue(RefreshBox.Text, "Default") is not { } refresh) throw new ArgumentException("Refresh rate must be an integer from 0 to 1000.");
         var disabled = new JsonArray();
@@ -355,7 +362,7 @@ public partial class GameSettingsView : UserControl
 
     private void Fail(string message) { StatusText.Classes.Add("error"); StatusText.Text = message; }
     private static string GetString(JsonObject obj, string name, string fallback) => obj[name]?.GetValue<string>() ?? fallback;
-    private static int GetInt(JsonObject obj, string name, int fallback) => obj[name] is JsonValue value && value.TryGetValue<int>(out var number) ? number : fallback;
+    private static int GetInt(JsonObject obj, string name, int fallback) => obj[name] is JsonValue value && (value.TryGetValue<int>(out var number) || (value.TryGetValue<double>(out var real) && (number = (int)Math.Round(real)) == number)) ? number : fallback;
     private static bool GetBool(JsonObject obj, string name, bool fallback) => obj[name] is JsonValue value && value.TryGetValue<bool>(out var result) ? result : fallback;
     private static int QualityIndex(string value) => value.ToLowerInvariant() switch { "low" => 0, "medium" => 1, "ultra" => 3, _ => 2 };
     private static string QualityValue(ComboBox box) => new[] { "low", "medium", "high", "ultra" }[Math.Clamp(box.SelectedIndex, 0, 3)];

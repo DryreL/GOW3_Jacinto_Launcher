@@ -110,7 +110,7 @@ internal sealed class GamepadReader : IDisposable
                 }
                 linuxState = default;
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { linuxState = default; Thread.Sleep(3000); }
+            catch (Exception) { linuxState = default; Thread.Sleep(3000); } // Any failure here must never take the launcher down: this runs on its own thread.
         }
     }
 }
