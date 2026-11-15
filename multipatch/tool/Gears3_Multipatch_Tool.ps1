@@ -2007,6 +2007,26 @@ function Install-Multipatch {
         $warningsList.Add("Act 3 Transition Fix: Map file not found")
     }
 
+    # Ghost Town (Act 3 Ch. 4): the cinematic hides its vehicles and SP_Mercy_01_IntroTrucks shows the parked copies, but Dizzy's
+    # cargo truck there (InterpActor_1) is bHidden=True with its collision on, and the gas station fight at the end of Mercy has
+    # the same truck (SP_Mercy_01_S_Showdown InterpActor_11). Their cover links stay, so players took cover against nothing and
+    # shots hit an invisible wall. bHidden=False shows the trucks. A checkpoint saved before keeps the truck hidden.
+    foreach ($tf in @(
+        @{ Map = 'SP_Mercy_01_IntroTrucks.gear'; Pre = '1c0000000000000023000000000000000000000000000000'; Suf = '140000000000000023000000000000000000000000000000' },
+        @{ Map = 'SP_Mercy_01_S_Showdown.gear';  Pre = '4b0000000000000057000000000000000000000000000000'; Suf = '330000000000000057000000000000000000000000000000' })) {
+        $TruckMap = Join-Path $GameDir ('GearGame\Content\Maps\SP\SP_09_Mercy\' + $tf.Map)
+        if (-not (Test-Path -LiteralPath $TruckMap)) { Say "  error  $($tf.Map) not found. Skipped." 'Yellow'; $warningsList.Add("Ghost Town Truck Fix: $($tf.Map) not found"); continue }
+        $TruckBytes = [System.IO.File]::ReadAllBytes($TruckMap)
+        $TruckHits = [GOW3SemanticByteLocator]::Find($TruckBytes, (HexToBytes $tf.Pre), (HexToBytes $tf.Suf))
+        if ($TruckHits.Count -ne 1) { Say "  error  Ghost Town truck fix target not found exactly once in $($tf.Map). Skipped." 'Yellow'; $warningsList.Add("Ghost Town Truck Fix: target not found in $($tf.Map)"); continue }
+        if ($TruckBytes[$TruckHits[0]] -eq 0x00) { Say "  ok  Ghost Town truck fix is already applied ($($tf.Map))." 'DarkGray'; continue }
+        if ($TruckBytes[$TruckHits[0]] -ne 0x01) { Say "  error  Ghost Town truck fix target has unexpected value ($($tf.Map)). Skipped." 'Yellow'; $warningsList.Add("Ghost Town Truck Fix: unexpected value in $($tf.Map)"); continue }
+        $TruckBytes[$TruckHits[0]] = 0x00
+        Set-ItemProperty -Path $TruckMap -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+        [System.IO.File]::WriteAllBytes($TruckMap, $TruckBytes)
+        Say "  ok  Ghost Town truck fix applied ($($tf.Map))." 'Green'
+    }
+
     Header "11/$StepTotal AI Debug On-Screen Text Removal"
 
     $GearGameU = Join-Path $GameDir "GearGame\Script\GearGame.u"
@@ -3549,6 +3569,22 @@ function Uninstall-Multipatch {
             Set-ItemProperty -Path $Act3FixMap -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
             [System.IO.File]::WriteAllBytes($Act3FixMap, $MapBytes)
             Say "  ok  Act 3 transition fix reverted." 'Green'
+            $count++
+        }
+    }
+
+    foreach ($tf in @(
+        @{ Map = 'SP_Mercy_01_IntroTrucks.gear'; Pre = '1c0000000000000023000000000000000000000000000000'; Suf = '140000000000000023000000000000000000000000000000' },
+        @{ Map = 'SP_Mercy_01_S_Showdown.gear';  Pre = '4b0000000000000057000000000000000000000000000000'; Suf = '330000000000000057000000000000000000000000000000' })) {
+        $TruckMap = Join-Path $GameDir ('GearGame\Content\Maps\SP\SP_09_Mercy\' + $tf.Map)
+        if (-not (Test-Path -LiteralPath $TruckMap)) { continue }
+        $TruckBytes = [System.IO.File]::ReadAllBytes($TruckMap)
+        $TruckHits = [GOW3SemanticByteLocator]::Find($TruckBytes, (HexToBytes $tf.Pre), (HexToBytes $tf.Suf))
+        if ($TruckHits.Count -eq 1 -and $TruckBytes[$TruckHits[0]] -eq 0x00) {
+            $TruckBytes[$TruckHits[0]] = 0x01
+            Set-ItemProperty -Path $TruckMap -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+            [System.IO.File]::WriteAllBytes($TruckMap, $TruckBytes)
+            Say "  ok  Ghost Town truck fix reverted ($($tf.Map))." 'Green'
             $count++
         }
     }

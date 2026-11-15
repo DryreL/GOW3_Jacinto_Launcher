@@ -14,7 +14,7 @@ internal sealed class TextPage : UserControl
 {
     private static readonly Dictionary<string, string> Profiles = new(StringComparer.Ordinal)
     {
-        ["DryreL"] = "DryreL", ["refresh50"] = "refresh50", ["wuxinwei110"] = "wuxinwei110", ["LukeBoya"] = "lukeboya", ["Grilex"] = "grilex", ["pasha12071991"] = "pasha12071991", ["HJ"] = "Hpapa", ["Dlposn"] = "Dlposn", ["Rabbit77rage"] = "Rabbit77rage"
+        ["DryreL"] = "DryreL", ["refresh50"] = "refresh50", ["wuxinwei110"] = "wuxinwei110", ["LukeBoya"] = "lukeboya", ["Grilex"] = "grilex", ["pasha12071991"] = "pasha12071991", ["HJ"] = "Hpapa", ["Dlposn"] = "Dlposn", ["Rabbit77rage"] = "Rabbit77rage", ["conjuntovazio"] = "conjuntovazio"
     };
 
     internal TextPage(string title, string resource)

@@ -56,7 +56,7 @@ internal sealed class FeaturesPage : UserControl
         ("CAMPAIGN CO-OP ONLINE", "M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05A4.2 4.2 0 0 1 17 16.5V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z", new[]
         {
             "Play the whole campaign with Steam friends, with no port forwarding and no VPN.",
-            "Press F8 in the game to invite. Your friend accepts and joins automatically.",
+            "Invite from the Steam overlay (Shift+Tab) or the friends list. Your friend accepts and joins automatically.",
             "Split-screen on one PC keeps working."
         }),
         ("THE CAMPAIGN CAN BE FINISHED", "M14.4 6 14 4H5v17h2v-7h5.6l.4 2h7V6z", new[]

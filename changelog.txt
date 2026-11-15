@@ -5,6 +5,14 @@ Game: Gears of War 3 Jacinto Build v1.1.1
 NexusMods Page: https://www.nexusmods.com/gearsofwar3/mods/27
 =================================================================
 
+v0.4.1
+- Act 3 Chapter 4 (Ghost Town) invisible cover / shot blocker at the gas pumps fixed: after the intro cinematic, Dizzy's cargo truck next to the white van was hidden while its collision and cover stayed, so you could take cover against nothing and shots hit an invisible object. The truck is visible again (SP_Mercy_01_IntroTrucks.gear, one byte, reverted on uninstall). The same hidden truck at the gas station fight at the end of Mercy (SP_Mercy_01_S_Showdown.gear) is fixed too. A checkpoint saved before the fix keeps the truck hidden: restart the chapter. Found and tested in game by conjuntovazio (thanks!).
+- Linux / Steam Deck / macOS: the game folder now always has both start scripts, Gears3_Start_Game.bat and Gears3_Start_Game.sh (and the Debug versions), whichever system the Multipatch was installed on. A missing one is written at install and before each Play with the same settings, Settings keeps all of them up to date, and Uninstall removes the ones the launcher wrote.
+- Exit button at the bottom of the menu. On large scaled displays (for example 4K at 300%) the title bar can be off screen; Exit closes the launcher for real, like Exit in the tray menu.
+- Antivirus (Kaspersky "Yephiler", Rising, Symantec, Trellix flagged wsock32.dll, the JacintoNet Steam co-op file, and so the download): JacintoNet no longer watches the keyboard or the focused window at all. The F8 invite key is gone; invite from the Steam overlay (Shift+Tab > friend > Invite to Game) or the friends list, and "Join Game" keeps working. Co-op partners on v0.4.0 can still play with v0.4.1. The launcher itself was never flagged. The detection is a false positive; if an engine still flags the new file, please report it to that vendor.
+- Known Issue (Not a Bug) - Collectibles: the Jacinto build places some collectibles somewhere else than the Xbox release: the Bayonet (Act 1, Hanging by a Thread) and COG Tag 6 (to the right of its Xbox spot, behind a large container with a white Gear icon, near the mountain). Still missing from the maps: Cole's Championship Ring and the Times-Tribune Clipping (Stadium), the Octus Medal Diploma (Shipwreck, "Medal Box" in the files), the Hanover COG Tag and the Azura Memorial.
+- Updated Hungarian language (HJ).
+
 v0.4.0 (05 Nov 2026, 10:32 AM)
 - macOS: one download for Apple Silicon and Intel, a signed and notarized .dmg with a normal app inside (drag it to Applications). This fixes "Apple could not verify ... is free of malware". The app keeps its settings and log in your user folder and, when a new version is out, opens the download page.
 - Settings: pressing the tab that is already open (Controls included) no longer reloads it, so unsaved changes stay.

@@ -33,7 +33,7 @@ def wanted():
     lines = {}
     for path in CS_FILES:
         for s in literals(path):
-            s = s.replace('\\n', '\n').replace('\\"', '"').lstrip('#')
+            s = s.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\').lstrip('#')
             if s and re.search('[A-Za-z]{2}', s) and not SKIP.match(s) and ('.' in s or ' ' in s or s.upper() == s or s[0].isupper()):
                 lines.setdefault(s, path)
     for path in glob.glob(os.path.join(ROOT, '*.axaml')):

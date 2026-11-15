@@ -339,6 +339,8 @@ public partial class MainWindow : Window
 
     private void PlayOffline_Click(object? sender, RoutedEventArgs e) => _ = LaunchAsync(NetworkMode.Offline, "Offline");
     private void PlaySteam_Click(object? sender, RoutedEventArgs e) => _ = LaunchAsync(NetworkMode.Steam, "Steam/JacintoNet");
+    // Same as Exit in the tray menu: closes for real, not to the tray.
+    private void Exit_Click(object? sender, RoutedEventArgs e) { ExitNav.IsChecked = false; exiting = true; Close(); }
 
     private async Task LaunchAsync(string mode, string label)
     {
@@ -815,12 +817,13 @@ public partial class MainWindow : Window
         ShowUpdatePrompt();
     }
 
-    private async Task<string> CheckForUpdateNowAsync()
+    // Text for the About page plus the result: true = up to date (shown green), false = an update exists (amber), null = could not check.
+    private async Task<(string Text, bool? UpToDate)> CheckForUpdateNowAsync()
     {
         release = await LauncherUpdate.LatestAsync();
-        if (release is null) return L.T("No published version was found, or GitHub could not be reached.");
+        if (release is null) return (L.T("No published version was found, or GitHub could not be reached."), null);
         ShowRelease(release);
-        return LauncherUpdate.IsNewer(release) ? L.F("Version v{0} is available. Update it on Home.", release.Version.ToString(3)) : L.F("You have the latest version (v{0}).", LauncherUpdate.Current.ToString(3));
+        return LauncherUpdate.IsNewer(release) ? (L.F("Version v{0} is available. Update it on Home.", release.Version.ToString(3)), false) : (L.F("You have the latest version (v{0}).", LauncherUpdate.Current.ToString(3)), true);
     }
 
     /// <summary>True on the day this version came out and the day after, by its date in the bundled changelog.</summary>

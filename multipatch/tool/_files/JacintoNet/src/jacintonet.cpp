@@ -5,7 +5,7 @@
 // Phase 2b: UDP tunnel. Every Steam friend has a virtual IP 10.a.b.c (low 24 bits of the account ID). Game packets sent to
 //           such an address go through Steam P2P (ISteamNetworkingMessages, relayed, no port forwarding) and come back
 //           to the game from recvfrom as if they came from that address. All other traffic is untouched.
-// Phase 2c: every player owns a friends-only Steam lobby (version + port in its data). F8 or the overlay invites a friend;
+// Phase 2c: every player owns a friends-only Steam lobby (version + port in its data). The overlay (Shift+Tab) invites a friend;
 //           accepting the invite joins the host's lobby, checks the version and sends the game to the host's virtual IP
 //           through UGameEngine::SetClientTravel (what the console "open" command does).
 // 2d:       rich presence shows the act / chapter (host: from its Launch.log, joined players: from the host's lobby);
@@ -324,7 +324,6 @@ static void PresenceText(int chapter, char* out, size_t cap)
 // ---- Steam ----
 static int g_port = 7777;                              // [URL] Port from GearEngine.ini: where this PC's game listens
 static CSteamID g_lobby;                               // lobby we are in (our own, or the host's after an invite)
-static bool g_inviteWhenReady;                         // F8 pressed while we were in someone else's lobby
 
 static bool OwnLobby() { return g_lobby.IsValid() && SteamMatchmaking()->GetLobbyOwner(g_lobby) == SteamUser()->GetSteamID(); }
 static void UpdatePresence()
@@ -407,8 +406,7 @@ void SteamEvents::OnLobbyEnter(LobbyEnter_t* e)
         SteamMatchmaking()->SetLobbyData(lobby, "port", port);
         SteamMatchmaking()->SetLobbyData(lobby, "guid", g_pkgGuid);
         SteamMatchmaking()->SetLobbyData(lobby, "uhash", g_pkgHash);
-        Log("Lobby ready. Press F8 (or Shift+Tab > friend > Invite) to invite a friend.");
-        if (g_inviteWhenReady) { g_inviteWhenReady = false; SteamFriends()->ActivateGameOverlayInviteDialog(lobby); }
+        Log("Lobby ready. Invite a friend with Shift+Tab > friend > Invite to Game.");
         return;
     }
 
@@ -496,27 +494,10 @@ static DWORD WINAPI SteamThread(void*)
     g_ready = true;
     if (!JoinLobbyFromConnect(GetCommandLineA())) CreateOwnLobby();   // started by Steam to join a friend
 
-    // F8 while the game window is in front: Steam invite dialog for our lobby. The hot key exists only while the game
-    // has focus, so F8 stays free for other programs. (Polling GetAsyncKeyState got this DLL flagged as a keylogger.)
-    const int kInviteHotKey = 1;
-    bool hotKeyOn = false;
+    // No invite key: invites go through the Steam overlay or the friends list (rich presence "connect"). A key watch in a
+    // wsock32 proxy (GetAsyncKeyState, later RegisterHotKey + GetForegroundWindow) got this DLL flagged as a keylogger.
     for (int tick = 0;; tick++) {
         SteamAPI_RunCallbacks();
-
-        DWORD pid = 0; GetWindowThreadProcessId(GetForegroundWindow(), &pid);
-        bool focused = pid == GetCurrentProcessId();
-        if (focused != hotKeyOn) {
-            if (focused) { if (!RegisterHotKey(nullptr, kInviteHotKey, MOD_NOREPEAT, VK_F8)) Log("F8 is in use by another program: use Shift+Tab > Friend > Invite"); }
-            else UnregisterHotKey(nullptr, kInviteHotKey);
-            hotKeyOn = focused;
-        }
-        MSG msg;
-        while (PeekMessageW(&msg, nullptr, WM_HOTKEY, WM_HOTKEY, PM_REMOVE)) {
-            if (msg.wParam != kInviteHotKey) continue;
-            if (g_lobby.IsValid() && SteamMatchmaking()->GetLobbyOwner(g_lobby) == me) SteamFriends()->ActivateGameOverlayInviteDialog(g_lobby);
-            else { g_inviteWhenReady = true; LeaveCurrentLobby(); CreateOwnLobby(); }   // in a friend's lobby: host our own first
-        }
-
         if (tick % 50 == 0) { TailLaunchLog(); UpdatePresence(); }        // about once a second
         if (tick == 1200) Log("Overlay enabled: %s", SteamUtils()->IsOverlayEnabled() ? "yes" : "no");   // ~60 s after start
         Sleep(20);

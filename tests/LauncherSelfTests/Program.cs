@@ -259,6 +259,13 @@ try
     var shDir = Path.Combine(temp, "Sh"); Directory.CreateDirectory(shDir);
     File.WriteAllText(Path.Combine(shDir, "Gears3_Start_Game.sh"), "#!/bin/sh\nARGS=\"-WINDOWED -VSYNC -ResX=1280 -ResY=800 -language=INT\"\nexec wine GearGame.exe $ARGS\n");
     Check(MultipatchBridge.LaunchArguments(shDir) == "-WINDOWED -VSYNC -ResX=1280 -ResY=800 -language=INT", "Multipatch .sh start arguments parsed");
+    // A game patched on one system gets the other system's start scripts, with the same arguments; Uninstall removes only those.
+    Check(GameLayout.EnsureStartScripts(shDir) == 3 && GameLayout.EnsureStartScripts(shDir) == 0, "missing start scripts written once");
+    File.Delete(Path.Combine(shDir, "Gears3_Start_Game.sh"));
+    Check(MultipatchBridge.LaunchArguments(shDir) == "-WINDOWED -VSYNC -ResX=1280 -ResY=800 -language=INT", ".bat written from .sh keeps the arguments");
+    Check(GameLayout.EnsureStartScripts(shDir) == 1 && MultipatchBridge.LaunchArguments(Path.Combine(shDir)) == "-WINDOWED -VSYNC -ResX=1280 -ResY=800 -language=INT" && File.ReadAllText(Path.Combine(shDir, "Gears3_Start_Game.sh")).Contains("ARGS=\"-WINDOWED -VSYNC -ResX=1280 -ResY=800 -language=INT\""), ".sh written from .bat keeps the arguments");
+    GameLayout.RemoveCreatedStartScripts(shDir);
+    Check(GameLayout.StartScriptNames.All(name => !File.Exists(Path.Combine(shDir, name))), "created start scripts removed");
     // "native" follows the physical screen size reported by the UI, not a DPI-virtualized one.
     SettingsEngine.Screens = () => new[] { (0, 0, 2560, 1440, true), (2560, 0, 4480, 1080, false) };
     var nativeReq = JsonNode.Parse(request.ToJsonString())!.AsObject(); nativeReq["Resolution"] = "native";

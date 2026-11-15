@@ -371,6 +371,7 @@ internal static class MultipatchInstaller
                 }
                 log("Installing the launcher...");
                 InstallLauncherFiles(game, launcherSource);
+                GameLayout.EnsureStartScripts(game);
                 File.Copy(patchset, InstalledPatchset(game), true);
                 ApplyDisplay(game, log);
                 ApplyIntro(game);
@@ -708,6 +709,7 @@ internal static class MultipatchInstaller
             createdGraphics = Hash(graphics);
         }
         InstallLauncherFiles(game, launcherSource);
+        GameLayout.EnsureStartScripts(game);
         WriteIdentity(game, "launcher-only", mode!, createShortcut ? CreateShortcut(game) : null, createdGraphics);
     }
 
@@ -797,6 +799,7 @@ internal static class MultipatchInstaller
         }
         var shortcut = identity["Shortcut"]?.GetValue<string>();
         if (!string.IsNullOrEmpty(shortcut) && File.Exists(shortcut)) File.Delete(shortcut);
+        GameLayout.RemoveCreatedStartScripts(game);
         Dxvk.Remove(game);
         var audioCommands = Path.Combine(game, "Binaries", "Gears3_Audio.txt");
         if (File.Exists(audioCommands)) File.Delete(audioCommands);

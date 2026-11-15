@@ -91,6 +91,7 @@ See [DEVELOPMENT.md](DEVELOPMENT.md). The source builds without game files, but 
 - **DryreL:** Multi Patch Tool, online co-op (JacintoNet), campaign fixes, launcher since v0.3.8
 - **refresh50:** first launcher (v0.3.7), checkpoint and Load Game fix, Bink crash fix, missing objectives fix
 - **LukeBoya:** Mother Corpser boss fight, Act 3 to Act 4 transition
+- **conjuntovazio:** Ghost Town invisible truck fix
 - **Dlposn:** Loading Profile bypass, opening logos
 - **HJ:** keyboard and mouse button icons
 - **Grilex:** high-resolution subtitle font

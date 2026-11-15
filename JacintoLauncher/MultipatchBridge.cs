@@ -192,6 +192,9 @@ internal static class MultipatchBridge
     {
         ValidateLaunch(gameDir, mode);
         var arguments = LaunchArguments(gameDir);
+        // Installations from v0.4.0 and older have only the scripts of the system they were patched on.
+        try { if (GameLayout.EnsureStartScripts(gameDir) is var written and > 0) LauncherDiagnostics.Info($"Wrote {written} missing start script(s)."); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { LauncherDiagnostics.Info("Start scripts not completed: " + exception.Message); }
         var config = Config ?? new LauncherConfig();
         var layer = GameRunner.NeedsCompatibilityLayer ? GameRunner.FindLayer(config) : null;
         var start = GameRunner.BuildStart(gameDir, arguments, mode, config, layer);

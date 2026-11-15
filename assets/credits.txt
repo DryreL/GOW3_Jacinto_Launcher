@@ -39,6 +39,7 @@ wuxinwei110 - Larger subtitle font for Traditional Chinese
 refresh50 - Checkpoint & Load Game fix (Fixsave), Bink / XAudio2 crash fix, Multi-language Missing Objectives fix
 LukeBoya - Act 2 Chapter 4 (Mother Corpser): the whole boss encounter is now a restored, retail-style fight
 LukeBoya - Act 3 to Act 4 Transition (Objective Failed Bugfix)
+conjuntovazio - Act 3, Ghost Town: invisible truck at the gas pumps fix
 
 SUPPORTERS
 Rabbit77rage

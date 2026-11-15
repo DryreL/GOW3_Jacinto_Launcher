@@ -14,14 +14,24 @@ internal sealed class AboutPage : UserControl
     private const long Gigabyte = 1L << 30;
     private const string JacintoNetVersion = "0.3.8"; // kVersion in jacintonet.cpp and the DLL's resource.rc.
 
-    internal AboutPage(string? gameDir, LauncherConfig config, Func<Task<string>> checkForUpdate)
+    internal AboutPage(string? gameDir, LauncherConfig config, Func<Task<(string Text, bool? UpToDate)>> checkForUpdate)
     {
         var panel = new StackPanel();
 
         var status = new TextBlock { Text = L.F("Current version: v{0}", LauncherUpdate.Current.ToString(3)), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
         status.Classes.Add("muted");
         var check = new Button { Content = L.T("Check for updates") };
-        check.Click += async (_, _) => { check.IsEnabled = false; status.Text = await checkForUpdate(); check.IsEnabled = true; };
+        check.Click += async (_, _) =>
+        {
+            check.IsEnabled = false;
+            var (text, upToDate) = await checkForUpdate();
+            status.Text = text;
+            // green = already up to date, amber = a newer version exists, the muted colour when the check could not run
+            if (upToDate == true) status.Foreground = new SolidColorBrush(Color.Parse("#2FA84F"));
+            else if (upToDate == false) status.Foreground = new SolidColorBrush(Color.Parse("#F5B301"));
+            else status.ClearValue(TextBlock.ForegroundProperty);
+            check.IsEnabled = true;
+        };
         DockPanel.SetDock(check, Dock.Right);
         var update = new DockPanel { Margin = new Thickness(0, 12, 0, 0) };
         update.Children.Add(check); update.Children.Add(status);
