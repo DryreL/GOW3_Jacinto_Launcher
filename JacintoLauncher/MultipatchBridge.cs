@@ -91,17 +91,19 @@ internal static class MultipatchBridge
             foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
             {
                 var inner = Path.GetRelativePath(source, file);
-                if (inner.StartsWith("..", StringComparison.Ordinal)) throw new InvalidOperationException("A save path escaped SaveData.");
+                // Only "..\" escapes; a file whose name starts with two dots (for example "..sav") is a save like any other.
+                if (inner == ".." || inner.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) || Path.IsPathRooted(inner)) throw new InvalidOperationException("A save path escaped SaveData: " + inner);
                 var relative = label == "SaveData" ? inner : Path.Combine(label, inner);
                 var output = Path.Combine(partial, relative);
                 Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-                File.Copy(file, output, false);
+                // A file that disappears between listing and copying (cloud sync, the game's own temp files) is not a save to keep.
+                try { File.Copy(file, output, false); } catch (FileNotFoundException) { continue; }
                 var sourceHash = Hash(file);
                 if (!string.Equals(sourceHash, Hash(output), StringComparison.Ordinal)) throw new IOException("Save hash mismatch after copy: " + relative);
                 entries.Add(new { RelativePath = relative, Length = new FileInfo(file).Length, SHA256 = sourceHash });
             }
             File.WriteAllText(Path.Combine(partial, "manifest.json"), JsonSerializer.Serialize(new { CreatedUtc = DateTime.UtcNow, Sources = sources.Select(item => item.Item2).ToArray(), Files = entries }, new JsonSerializerOptions { WriteIndented = true }));
-            Directory.Move(partial, destination);
+            LauncherDiagnostics.Retry(() => Directory.Move(partial, destination));
             return new SaveBackupResult(destination, entries.Count, Path.Combine(destination, "manifest.json"));
         }
         catch (Exception exception) { throw new IOException("Save backup did not complete. Partial data, if any, was retained for inspection at: " + partial, exception); }
@@ -167,7 +169,7 @@ internal static class MultipatchBridge
         if (!File.Exists(executable)) throw new FileNotFoundException("GearGame.exe not found.", executable);
         var script = GameLayout.StartScript(root) ?? throw new UserActionException("Gears3_Start_Game.bat is missing from the game folder. Install the Multipatch on the Home screen.");
         if (GameLayout.ToolFilesDir(root) is null) throw new DirectoryNotFoundException("Multipatch data (graphics.json) was not found in tools\\multipatch\\_files or Gears3_Multipatch_Tool\\_files.");
-        if (mode == NetworkMode.Steam && requireSteamClient && !GameRunner.IsSteamClientRunning()) throw new InvalidOperationException("Steam is not running.");
+        if (mode == NetworkMode.Steam && requireSteamClient && !GameRunner.IsSteamClientRunning()) throw new UserActionException("Steam is not running. Start Steam and sign in, then press Play on Steam again.");
         NetworkMode.Validate(root, mode);
         return script;
     }
@@ -183,7 +185,8 @@ internal static class MultipatchBridge
         var match = (script.EndsWith(".sh", StringComparison.OrdinalIgnoreCase) ? ShellArguments : LaunchLine).Match(File.ReadAllText(script));
         if (!match.Success) throw new InvalidDataException("No GearGame.exe line was found in " + Path.GetFileName(script) + ".");
         var arguments = match.Groups[1].Value.Trim();
-        if (!SafeArguments.IsMatch(arguments)) throw new InvalidDataException("Unsupported startup arguments in " + Path.GetFileName(script) + ": " + arguments);
+        // Usually a hand edit (for example "-language= russian"). Apply in Settings writes the whole line again from the saved settings.
+        if (!SafeArguments.IsMatch(arguments)) throw new UserActionException("The startup line in " + Path.GetFileName(script) + " was changed by hand and the launcher does not run it: " + arguments + ". Open Settings > Display, choose the language and press Apply to write it again.");
         return arguments;
     }
 
@@ -195,6 +198,8 @@ internal static class MultipatchBridge
         // Installations from v0.4.0 and older have only the scripts of the system they were patched on.
         try { if (GameLayout.EnsureStartScripts(gameDir) is var written and > 0) LauncherDiagnostics.Info($"Wrote {written} missing start script(s)."); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { LauncherDiagnostics.Info("Start scripts not completed: " + exception.Message); }
+        try { if (GameLayout.FreshenScriptDates(gameDir) is var fresh and > 0) LauncherDiagnostics.Info($"Script packages dated after the sources, so the game does not ask to rebuild them: {fresh}."); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { LauncherDiagnostics.Info("Script package dates not changed: " + exception.Message); }
         var config = Config ?? new LauncherConfig();
         var layer = GameRunner.NeedsCompatibilityLayer ? GameRunner.FindLayer(config) : null;
         var start = GameRunner.BuildStart(gameDir, arguments, mode, config, layer);
@@ -204,8 +209,10 @@ internal static class MultipatchBridge
         LimitAudioChannelsForVulkan(gameDir);
         MultipatchInstaller.ShareHudGuid(gameDir);
         PlayerIdentity.Apply(gameDir, config.PlayerName, GameRunner.DocumentsRoot(config));
+        // The backup is a safety net: when it fails the game still starts, and the error says why.
         if (backupSaves && (Directory.Exists(Path.Combine(gameDir, "GearGame", "SaveData")) || Directory.Exists(Path.Combine(gameDir, "Binaries", "GearGame", "SaveData"))))
-            LauncherDiagnostics.Info("Pre-launch " + BackupAllSaves(gameDir));
+            try { LauncherDiagnostics.Info("Pre-launch " + BackupAllSaves(gameDir)); }
+            catch (IOException exception) { LauncherDiagnostics.Error("Save backup before launch failed; the game was started anyway", exception); }
         System.Diagnostics.Process process;
         try { process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("GearGame.exe did not start."); }
         catch (System.ComponentModel.Win32Exception exception) when (exception.NativeErrorCode == 740)

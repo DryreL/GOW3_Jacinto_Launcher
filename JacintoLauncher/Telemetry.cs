@@ -56,6 +56,8 @@ internal static class Telemetry
                 {
                     if (evt.Message?.Formatted is { } formatted) evt.Message = Scrub(formatted);
                     foreach (var exception in evt.SentryExceptions ?? Enumerable.Empty<Sentry.Protocol.SentryException>()) exception.Value = exception.Value is null ? null : Scrub(exception.Value);
+                    // Wine / Proton lacks some Windows DLLs that the UI toolkit probes; that is the prefix, not the launcher.
+                    if (GameRunner.InsideWine && (evt.SentryExceptions ?? Enumerable.Empty<Sentry.Protocol.SentryException>()).Any(e => e.Type == "System.DllNotFoundException")) return null;
                     Describe(evt);
                     return evt;
                 });
@@ -211,7 +213,8 @@ internal static class Telemetry
     internal static string Scrub(string text)
     {
         foreach (var (value, label) in new[] { (gameDir, "<game>"), (Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "<home>"), (Environment.UserName, "<user>"), (Environment.MachineName, "<pc>"), (playerName, "<player>") })
-            if (!string.IsNullOrEmpty(value)) text = text.Replace(value, label, StringComparison.OrdinalIgnoreCase);
+            // A name of one or two characters (a player called ".") would replace every dot or letter in the report.
+            if (value is { Length: >= 3 }) text = text.Replace(value, label, StringComparison.OrdinalIgnoreCase);
         text = Regex.Replace(text, @"\b7656119\d{10}\b", "<steamid>");
         text = Regex.Replace(text, @"\b\d{1,3}(\.\d{1,3}){3}\b", "<ip>");
         text = Regex.Replace(text, @"'[A-Za-z]:\\[^']*'", "'<path>'"); // Quoted paths may hold spaces, and a folder name after one.

@@ -41,8 +41,8 @@ internal static class InstallAudit
         Check(L.T("Network mode"), () =>
         {
             var mode = NetworkMode.Read(game).Describe();
-            findings.Add(new Finding(L.T("Network mode"), L.T(mode == NetworkMode.Steam ? "Steam co-op" : mode == NetworkMode.Offline ? "Offline" : mode),
-                mode is NetworkMode.Steam or NetworkMode.Offline ? null : L.T("The campaign setting and the JacintoNet files do not agree. Press Play Offline or Play on Steam once to set them again.")));
+            findings.Add(new Finding(L.T("Network mode"), L.T(mode == NetworkMode.Steam ? "Steam co-op" : mode == NetworkMode.Offline ? "Offline" : mode == NetworkMode.Lan ? "LAN co-op" : mode),
+                mode is NetworkMode.Steam or NetworkMode.Offline or NetworkMode.Lan ? null : L.T("The campaign setting and the JacintoNet files do not agree. Press Play Offline or Play on Steam once to set them again.")));
         });
 
         Check(L.T("Launcher"), () =>

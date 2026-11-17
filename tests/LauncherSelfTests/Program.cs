@@ -92,6 +92,10 @@ try
     Check(Hash(package) == packageHash, "Steam restores GearGame.u byte-for-byte");
     Check(Hash(Path.Combine(bin, "steam_api64.dll")) == steamDllHash, "Steam restores the JacintoNet DLLs");
     NetworkMode.Apply(game, NetworkMode.Steam); Check(NetworkMode.Read(game).Describe() == "Steam", "Steam is idempotent");
+    NetworkMode.Apply(game, NetworkMode.Lan);
+    Check(NetworkMode.Read(game).Describe() == "LAN" && !File.Exists(Path.Combine(bin, "wsock32.dll")) && Hash(package) == packageHash, "LAN: the Campaign keeps listening (as Steam) and JacintoNet is parked (as Offline)");
+    NetworkMode.Apply(game, NetworkMode.Offline); Check(NetworkMode.Read(game).Describe() == "Offline", "LAN to Offline");
+    NetworkMode.Apply(game, NetworkMode.Lan); NetworkMode.Apply(game, NetworkMode.Steam); Check(NetworkMode.Read(game).Describe() == "Steam" && Hash(package) == packageHash && Hash(Path.Combine(bin, "steam_api64.dll")) == steamDllHash, "LAN back to Steam restores the DLLs and GearGame.u");
     NetworkMode.Apply(game, NetworkMode.Offline); File.WriteAllText(Path.Combine(bin, "wsock32.dll"), "foreign proxy");
     Throws(() => NetworkMode.Apply(game, NetworkMode.Offline), "Offline refuses a wsock32.dll that differs from the parked copy");
     Check(File.ReadAllText(Path.Combine(bin, "wsock32.dll")) == "foreign proxy", "foreign wsock32.dll left untouched");
@@ -139,6 +143,14 @@ try
     // v0.4.0: whole numbers written as 20.0 (older tools wrote floats) must pass the audit.
     var graphicsBefore=File.ReadAllText(graphics); var floatJson=JsonNode.Parse(graphicsBefore)!.AsObject(); floatJson["FpsLimit"]=JsonNode.Parse("240.0"); floatJson["AudioChannels"]=JsonNode.Parse("32.0"); floatJson["MasterVolume"]=JsonNode.Parse("100.0");
     File.WriteAllText(graphics,floatJson.ToJsonString()); Check(MultipatchBridge.LoadSettingsFromMultipatch(game)["Graphics"]?["FpsLimit"] is not null,"integer written as 240.0 is accepted"); File.WriteAllText(graphics,graphicsBefore);
+    Check(SettingsEngine.SameValue("20","20.0")&&SettingsEngine.SameValue("20,0","20.0")&&SettingsEngine.SameValue("20.000000","20")&&SettingsEngine.SameValue("0.0f","0")&&SettingsEngine.SameValue("True","true"),"audit: 20, 20.0, 20,0 and 20.000000 are the same value");
+    Check(!SettingsEngine.SameValue("20","21")&&!SettingsEngine.SameValue("True","False")&&!SettingsEngine.SameValue("","0"),"audit: different values still differ");
+    var iniAudit=File.ReadAllText(ini1); File.WriteAllText(ini1,System.Text.RegularExpressions.Regex.Replace(iniAudit,@"(?m)^(LoadMapTimeLimit=)(\d+)\.0",m=>m.Groups[1].Value+m.Groups[2].Value+",0"));
+    Check(File.ReadAllText(ini1)!=iniAudit && MultipatchBridge.LoadSettingsFromMultipatch(game)["Applied"]?["Problems"]?.AsArray().Any(p=>p?["Key"]?.GetValue<string>()=="LoadMapTimeLimit")==false,"audit accepts LoadMapTimeLimit=20,0 written by a comma-decimal Windows"); File.WriteAllText(ini1,iniAudit);
+    var srcDir=Path.Combine(game,"Development","Src","GearGame","Classes"); Directory.CreateDirectory(srcDir); var uc=Path.Combine(srcDir,"GearPawn.uc"); File.WriteAllText(uc,"class GearPawn;");
+    File.SetLastWriteTimeUtc(uc,DateTime.UtcNow.AddDays(1)); var scriptU=NetworkMode.ScriptPath(game); var uBytes=Hash(scriptU);
+    Check(GameLayout.FreshenScriptDates(game)>=1 && File.GetLastWriteTimeUtc(scriptU)>File.GetLastWriteTimeUtc(uc) && Hash(scriptU)==uBytes,"outdated scripts: packages are dated after the newest source, contents unchanged");
+    Check(GameLayout.FreshenScriptDates(game)==0,"outdated scripts: nothing to do the second time"); Directory.Delete(Path.Combine(game,"Development"),true);
     var machine=SystemInfo.Get(); Check(machine.OsName!="Unknown"&&machine.RamBytes>0&&machine.Cores>0,"system info: OS, RAM and cores are known ("+machine.OsName+", "+machine.Gpu+")");
     Check(LauncherDiagnostics.LooksLikeAntivirus(new UnauthorizedAccessException("Access to the path 'wsock32.dll' is denied."))&&!LauncherDiagnostics.LooksLikeAntivirus(new IOException("disk full")),"antivirus-blocked file is recognised");
     var after1=Hash(ini1); var repeat=MultipatchBridge.ApplyGraphicsThroughMultipatch(game,request); Check(Hash(ini1)==after1,"idempotent repeat apply");

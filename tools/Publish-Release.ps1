@@ -72,6 +72,10 @@ $notes = Join-Path $env:TEMP "jacinto-notes-$tag.md"
 $assets = @(Get-Item -LiteralPath 'dist\multipatch.jcpatch', 'dist\multipatch.jcpatch.sha256')
 $expected = ((Get-Content -LiteralPath 'dist\multipatch.jcpatch.sha256' -Raw).Trim() -split '\s')[0]
 if ((Get-FileHash -LiteralPath 'dist\multipatch.jcpatch').Hash -ne $expected) { throw 'dist\multipatch.jcpatch does not match its checksum.' }
+# The uploaded patch data is what CI embeds: it must be the current build, and dist must hold that build.
+. (Join-Path $PSScriptRoot 'Patchset-Inputs.ps1')
+Assert-PatchsetCurrent $repo 'patch-data\multipatch.jcpatch'
+if ((Get-FileHash -LiteralPath 'patch-data\multipatch.jcpatch').Hash -ne $expected) { throw 'dist\multipatch.jcpatch is not the current patch-data\multipatch.jcpatch. Run Build.bat again.' }
 
 Write-Host ""
 Write-Host "  Release $tag"

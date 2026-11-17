@@ -65,7 +65,7 @@
             <TextBlock x:Name="WarningText" Classes="status" Margin="0,6,0,0" IsVisible="False"/>
             <Button x:Name="DirectXButton" Content="Install DirectX components" Margin="0,8,0,0" IsVisible="False" Click="DirectX_Click"/>
             <Border x:Name="NewsCard" Classes="card" Margin="0,14,0,0" Padding="12" IsVisible="False">
-              <StackPanel><TextBlock x:Name="NewsTitle" FontWeight="SemiBold"/><TextBlock x:Name="NewsText" Classes="muted" TextWrapping="Wrap" MaxLines="5" Margin="0,4,0,0"/><Button x:Name="UpdateButton" Content="Update now" Classes="primary" HorizontalAlignment="Left" Margin="0,10,0,0" IsVisible="False" Click="Update_Click"/></StackPanel>
+              <StackPanel><TextBlock x:Name="NewsTitle" FontWeight="SemiBold"/><ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto" Margin="0,4,0,0"><TextBlock x:Name="NewsText" Classes="muted" TextWrapping="Wrap" MaxLines="5"/></ScrollViewer><Button x:Name="NewsMoreButton" Classes="link" Content="Show all" HorizontalAlignment="Left" Margin="0,4,0,0" IsVisible="False" Click="NewsMore_Click"/><Button x:Name="UpdateButton" Content="Update now" Classes="primary" HorizontalAlignment="Left" Margin="0,10,0,0" IsVisible="False" Click="Update_Click"/></StackPanel>
             </Border>
             <WrapPanel x:Name="SetupPanel" Margin="0,12,0,0" IsVisible="False">
               <Button x:Name="InstallButton" Content="Install Multipatch" Classes="primary" Margin="0,0,10,0" Click="Install_Click"/>

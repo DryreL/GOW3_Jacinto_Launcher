@@ -205,7 +205,7 @@ public partial class SettingsView : UserControl
     {
         try
         {
-            var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Launcher executable was not detected.");
+            var executable = LauncherDiagnostics.SelfPath;
             DesktopShortcut.Create(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory, Environment.SpecialFolderOption.Create), executable, "Gears of War 3 - Jacinto");
             GamePathText.Text = L.T("Desktop shortcut created or updated.");
         }
@@ -257,7 +257,7 @@ public partial class SettingsView : UserControl
         if (running && GameLayout.GameRunning()) { GamePathText.Text = L.T("Close the game first."); return; }
         if (running && (TopLevel.GetTopLevel(this) is not MainWindow window || !await window.ConfirmAsync(L.T("ADD TO STEAM"), L.T("Steam reads its library only when it starts, so it will close and reopen."), L.T("Add to Steam")))) return;
         SteamButton.IsEnabled = false;
-        var executable = Environment.ProcessPath;
+        var executable = LauncherDiagnostics.SelfPath;
         try
         {
             if (executable is null) throw new InvalidOperationException("Launcher executable was not detected.");

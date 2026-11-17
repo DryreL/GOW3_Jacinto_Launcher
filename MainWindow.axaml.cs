@@ -77,7 +77,6 @@ public partial class MainWindow : Window
         _ = UpgradeIfNeededAsync();
         _ = CheckForUpdateAsync();
         ReportGameCrash();
-        _ = Task.Run(() => { try { SteamShortcut.TurnOffSteamInput(); } catch (Exception exception) { LauncherDiagnostics.Info("Steam Input was not turned off: " + exception.Message); } });
         onlineTimer.Tick += (_, _) => _ = RefreshOnlineAsync();
         onlineTimer.Start();
         _ = RefreshOnlineAsync();
@@ -337,10 +336,17 @@ public partial class MainWindow : Window
         DirectXButton.IsVisible = !noLayer && missing is not null;
     }
 
-    private void PlayOffline_Click(object? sender, RoutedEventArgs e) => _ = LaunchAsync(NetworkMode.Offline, "Offline");
+    private void PlayOffline_Click(object? sender, RoutedEventArgs e) => _ = LaunchAsync(NetworkMode.Lan, "Offline");
     private void PlaySteam_Click(object? sender, RoutedEventArgs e) => _ = LaunchAsync(NetworkMode.Steam, "Steam/JacintoNet");
+
     // Same as Exit in the tray menu: closes for real, not to the tray.
-    private void Exit_Click(object? sender, RoutedEventArgs e) { ExitNav.IsChecked = false; exiting = true; Close(); }
+    private async void Exit_Click(object? sender, RoutedEventArgs e)
+    {
+        ExitNav.IsChecked = false;
+        if (!await ConfirmAsync(L.T("QUIT LAUNCHER"), L.T("Close the launcher? A game that is running keeps running."), L.T("Quit"))) return;
+        exiting = true;
+        Close();
+    }
 
     private async Task LaunchAsync(string mode, string label)
     {
@@ -356,6 +362,9 @@ public partial class MainWindow : Window
             StatusText.Text = L.T("Launching game...");
             PathText.Text = L.T(label + " launch started");
             var directory = gameDir; var backup = cfg.BackupSaveOnLaunch;
+            // Steam's own files are touched only when the player asks for Steam, never at startup: reading every Steam user's
+            // config when the launcher opens looks like an account stealer to antivirus heuristics.
+            if (mode == NetworkMode.Steam) await Task.Run(() => { try { SteamShortcut.TurnOffSteamInput(); } catch (Exception exception) { LauncherDiagnostics.Info("Steam Input was not turned off: " + exception.Message); } });
             await Task.Run(() => MultipatchBridge.StartGame(directory, mode, backup));
             Telemetry.Track("game_launch", new Dictionary<string, object> { ["mode"] = mode });
             HideToTray();
@@ -386,7 +395,7 @@ public partial class MainWindow : Window
                 var exit = new NativeMenuItem(L.T("Exit"));
                 exit.Click += (_, _) => { exiting = true; Close(); };
                 var offline = new NativeMenuItem(L.T("Play Offline"));
-                offline.Click += (_, _) => { if (PlayOfflineButton.IsEnabled) _ = LaunchAsync(NetworkMode.Offline, "Offline"); else RestoreFromTray(); };
+                offline.Click += (_, _) => { if (PlayOfflineButton.IsEnabled) _ = LaunchAsync(NetworkMode.Lan, "Offline"); else RestoreFromTray(); };
                 var steam = new NativeMenuItem(L.T("Play on Steam"));
                 steam.Click += (_, _) => { if (PlaySteamButton.IsEnabled) _ = LaunchAsync(NetworkMode.Steam, "Steam/JacintoNet"); else RestoreFromTray(); };
                 tray = new TrayIcon { Icon = new WindowIcon(icon), ToolTipText = Title, Menu = new NativeMenu { open, new NativeMenuItemSeparator(), offline, steam, new NativeMenuItemSeparator(), exit } };
@@ -643,7 +652,7 @@ public partial class MainWindow : Window
             });
             installing = false;
             Telemetry.Track("multipatch_install", new Dictionary<string, object> { ["result"] = "ok" });
-            installedLauncher = Path.Combine(directory, "JacintoLauncher", "Launcher", Path.GetFileName(Environment.ProcessPath!));
+            installedLauncher = Path.Combine(directory, "JacintoLauncher", "Launcher", Path.GetFileName(LauncherDiagnostics.SelfPath));
             // The list stays on screen until the player moves on; it scrolls by too fast to read otherwise.
             StatusText.Text = L.T("Installation complete.");
             PathText.Text = L.T("Continue opens the launcher from the game folder. You can then delete this download.");
@@ -844,9 +853,20 @@ public partial class MainWindow : Window
         var newer = LauncherUpdate.IsNewer(release);
         NewsTitle.Text = (newer ? L.T("UPDATE AVAILABLE") : L.T("WHAT'S NEW")) + "  ·  v" + release.Version;
         NewsText.Text = release.Notes.Trim();
+        NewsText.MaxLines = 5;
+        NewsMoreButton.Content = L.T("Show all");
+        // ponytail: counts lines and long lines, not the wrapped layout; a few short notes never get the link.
+        NewsMoreButton.IsVisible = NewsText.Text.Split('\n').Length > 5 || NewsText.Text.Length > 500;
         UpdateButton.IsVisible = newer;
         VersionText.Text = "v" + LauncherUpdate.Current.ToString(3) + (newer ? " *" : "");
         NewsCard.IsVisible = newer || NewsText.Text.Length != 0;
+    }
+
+    private void NewsMore_Click(object? sender, RoutedEventArgs e)
+    {
+        var expand = NewsText.MaxLines != 0;
+        NewsText.MaxLines = expand ? 0 : 5;
+        NewsMoreButton.Content = L.T(expand ? "Show less" : "Show all");
     }
 
     private void Update_Click(object? sender, RoutedEventArgs e) => ShowUpdatePrompt();

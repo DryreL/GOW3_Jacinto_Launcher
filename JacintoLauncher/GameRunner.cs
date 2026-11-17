@@ -158,7 +158,7 @@ internal static class GameRunner
             direct.Environment["DXVK_LOG_LEVEL"] = "none"; // Otherwise it writes logs beside the game.
             return direct;
         }
-        if (layer is null) throw new InvalidOperationException("No Windows compatibility layer was found (umu-run, Proton or Wine). Install one, or set it in Settings.");
+        if (layer is null) throw new UserActionException("No Windows compatibility layer was found (umu-run, Proton or Wine). Install one, or set it in Settings.");
         var prefix = Prefix(config);
         Directory.CreateDirectory(prefix);
         var start = new ProcessStartInfo(layer.Path) { UseShellExecute = false, WorkingDirectory = binaries };

@@ -40,7 +40,7 @@ internal static class CrashScreen
         {
             var file = Path.Combine(Path.GetTempPath(), "jacinto-crash-" + Guid.NewGuid().ToString("N") + ".txt");
             File.WriteAllText(file, (sent ? "sent" : "manual") + "\n" + details);
-            var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false };
+            var start = new ProcessStartInfo(LauncherDiagnostics.SelfPath) { UseShellExecute = false };
             start.ArgumentList.Add(Arg); start.ArgumentList.Add(file);
             using var window = Process.Start(start);
             if (window is not null) { window.WaitForExit(); if (window.ExitCode == 0) return; }

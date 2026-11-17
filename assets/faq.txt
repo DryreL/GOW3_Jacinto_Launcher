@@ -18,7 +18,13 @@ Press Install DirectX components on Home and install the DirectX June 2010 runti
 PLAYING
 
 Which button should I use?
-Play Offline for the campaign alone or split-screen. Play on Steam for online co-op; Steam must be running.
+Play Offline for the campaign alone, split-screen, or LAN co-op with a PC in the same house. Play on Steam for online co-op; Steam must be running. Both buttons accept LAN players.
+
+We are in the same house and the game says "Connection lost". What now?
+Both PCs need the same launcher version. The host presses Play Offline or Play on Steam and starts a Campaign chapter. On the other PC, start the game, open the console with the key under Esc (~) and type open <host IP>:7777, for example open 192.168.1.20:7777. The host IP is shown by ipconfig (IPv4 Address) on the host. If it still fails, Windows Firewall on the host blocks the game: allow GearGame.exe when Windows asks, or in Windows Security > Firewall > Allow an app.
+
+The game says "Scripts are outdated. Would you like to rebuild now?"
+Answer No, close the game and start it from the launcher: it dates the game's script files after their source files, so the question does not come back. It happens when unpacking or copying gave the source files (Development\Src) a newer date. Yes cannot work on a player's PC.
 
 Keyboard or gamepad?
 Settings > Controls. It decides which buttons work in some menus and which button icons the game shows. Keyboard and mouse: ESC and Enter work there, and the gamepad's B button does not. Gamepad: the reverse.

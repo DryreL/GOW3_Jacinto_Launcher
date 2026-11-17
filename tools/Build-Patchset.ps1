@@ -18,6 +18,10 @@ if (-not $JacintoNetBin) { $JacintoNetBin = Join-Path $PSScriptRoot '..\multipat
 if (-not $Launcher) { $Launcher = Join-Path $PSScriptRoot '..\bin\Release\net10.0\win-x64\GoW3Jacinto_Launcher.exe' }
 $CleanGame = [IO.Path]::GetFullPath($CleanGame); $Launcher = [IO.Path]::GetFullPath($Launcher)
 $output = Join-Path $PSScriptRoot '..\patch-data\multipatch.jcpatch'; [void][IO.Directory]::CreateDirectory((Split-Path -Parent $output))
+. (Join-Path $PSScriptRoot 'Patchset-Inputs.ps1')
+$repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$inputs = Get-PatchsetInputs $repoRoot   # Taken before the build: an input changed during it makes the stamp stale, not wrongly current.
+Remove-Item -LiteralPath ($output + '.inputs') -Force -ErrorAction SilentlyContinue
 $engineFiles = 'ini','txt','bat','cfg','json','xml','log','u','config','int','esm','ita'
 # A file the tool adds that is already in the "clean" copy looks unchanged, so it would silently stay out of the patch data.
 foreach ($added in 'GearGame\Content\CorpserRestor_Audio.upk','GearGame\Content\Interface\WarfareFonts2x.upk','Binaries\Win64\wsock32.dll') {
@@ -86,6 +90,9 @@ function Edit-Ini([string]$Path, [string]$Pattern, [string]$Value) {
 }
 # Act 2 Chapter 5 from Chapter Select: SP_Badlands_14a was only switched on by the Mother Corpser outro, which that start skips, so the ground was missing.
 Set-Byte (Join-Path $reference 'GearGame\Content\Maps\SP\SP_05_Badlands\SP_Badlands2_P.gear') 0x4999c 1 0
+# Act 3 Ghost Town (v0.4.1): Dizzy's truck at the gas pumps had bHidden=True but kept its collision and cover. Same truck at the Mercy gas station fight.
+Set-Byte (Join-Path $reference 'GearGame\Content\Maps\SP\SP_09_Mercy\SP_Mercy_01_IntroTrucks.gear') 0x8193 1 0
+Set-Byte (Join-Path $reference 'GearGame\Content\Maps\SP\SP_09_Mercy\SP_Mercy_01_S_Showdown.gear') 0xE34BF 1 0
 foreach ($file in 'GearGame\Config\GearEngine.ini','GearGame\Config\DefaultEngine.ini') {
     # Game time stopped at 50 ms per frame while sound kept real time, so every hitch pushed cutscene audio ahead of the picture.
     Edit-Ini (Join-Path $reference $file) '(?m)^MaxDeltaTime=0\.05(?=\r?$)' 'MaxDeltaTime=0.25'
@@ -111,4 +118,5 @@ foreach ($tree in 'Binaries','Engine','GearGame') {
 }
 foreach ($name in 'Gears3_Start_Game.bat','Gears3_Start_Game_Debug.bat') { if ((Get-FileHash -LiteralPath (Join-Path $check $name)).Hash -ne (Get-FileHash -LiteralPath (Join-Path $reference $name)).Hash) { $different += $name } }
 if ($different.Count) { throw "$($different.Count) file(s) differ from the reference engine. First: $($different[0])" }
+Set-Content -LiteralPath ($output + '.inputs') -Value $inputs -Encoding ascii
 Write-Output "Patch data verified against the reference engine: $output ($([int]((Get-Item -LiteralPath $output).Length / 1MB)) MB)"

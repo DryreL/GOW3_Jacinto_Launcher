@@ -89,20 +89,21 @@ internal static class LauncherUpdate
         string actual;
         await using (var stream = File.OpenRead(archive)) actual = Convert.ToHexString(await SHA256.HashDataAsync(stream));
         if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase)) { File.Delete(archive); throw new InvalidDataException("The downloaded update failed its SHA-256 check."); }
-        if (Directory.Exists(incoming)) Directory.Delete(incoming, true);
+        if (Directory.Exists(incoming)) LauncherDiagnostics.Retry(() => Directory.Delete(incoming, true));
         ZipFile.ExtractToDirectory(archive, incoming);
         File.Delete(archive);
         // A package zip has one folder around the launcher; the update must be the launcher folder itself.
         // Found by its package name: the running copy may have been renamed (for example "GoW3Jacinto_Launcher v0.3.8.exe").
-        var executable = new[] { PackageExe, Path.GetFileName(Environment.ProcessPath!) }
+        var executable = new[] { PackageExe, Path.GetFileName(LauncherDiagnostics.SelfPath) }
             .Select(name => Directory.EnumerateFiles(incoming, name, SearchOption.AllDirectories).FirstOrDefault()).FirstOrDefault(found => found is not null)
             ?? throw new InvalidDataException("The update holds no launcher.");
         if (Path.GetDirectoryName(executable) is { } inner && !string.Equals(inner, incoming, StringComparison.OrdinalIgnoreCase))
         {
             var lifted = incoming + ".lift";
-            Directory.Move(inner, lifted);
-            Directory.Delete(incoming, true);
-            Directory.Move(lifted, incoming);
+            // A virus scan of the files just unpacked holds them for a moment.
+            LauncherDiagnostics.Retry(() => Directory.Move(inner, lifted));
+            LauncherDiagnostics.Retry(() => Directory.Delete(incoming, true));
+            LauncherDiagnostics.Retry(() => Directory.Move(lifted, incoming));
             executable = Path.Combine(incoming, Path.GetFileName(executable));
         }
         if (release.PatchUrl is not null && release.PatchSumUrl is not null)
@@ -114,7 +115,7 @@ internal static class LauncherUpdate
         }
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(executable, File.GetUnixFileMode(executable) | UnixFileMode.UserExecute);
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, WorkingDirectory = incoming };
-        foreach (var argument in new[] { "--finish-update", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), Environment.ProcessPath! }) start.ArgumentList.Add(argument);
+        foreach (var argument in new[] { "--finish-update", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), LauncherDiagnostics.SelfPath }) start.ArgumentList.Add(argument);
         Process.Start(start)?.Dispose();
     }
 
@@ -148,8 +149,8 @@ internal static class LauncherUpdate
                 }
             try
             {
-                File.Copy(Environment.ProcessPath!, oldLauncher, true);
-                if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(oldLauncher, File.GetUnixFileMode(Environment.ProcessPath!));
+                File.Copy(LauncherDiagnostics.SelfPath, oldLauncher, true);
+                if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(oldLauncher, File.GetUnixFileMode(LauncherDiagnostics.SelfPath));
             }
             catch
             {
@@ -158,10 +159,10 @@ internal static class LauncherUpdate
             }
             foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
             {
-                if (string.Equals(file, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase) || Path.GetFileName(file) == "GoW3Jacinto_Launcher.json") continue;
+                if (string.Equals(file, LauncherDiagnostics.SelfPath, StringComparison.OrdinalIgnoreCase) || Path.GetFileName(file) == "GoW3Jacinto_Launcher.json") continue;
                 var destination = Path.Combine(target, Path.GetRelativePath(source, file));
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                File.Copy(file, destination, true);
+                LauncherDiagnostics.Retry(() => File.Copy(file, destination, true));
             }
             var start = new ProcessStartInfo(oldLauncher) { UseShellExecute = false, WorkingDirectory = target };
             start.ArgumentList.Add("--cleanup-update"); start.ArgumentList.Add(source);
@@ -176,7 +177,7 @@ internal static class LauncherUpdate
         {
             Thread.Sleep(1000);
             if (Directory.Exists(updateFolder) && updateFolder.EndsWith(".update", StringComparison.OrdinalIgnoreCase)) Directory.Delete(updateFolder, true);
-            if (File.Exists(Environment.ProcessPath + ".old")) File.Delete(Environment.ProcessPath + ".old");
+            if (File.Exists(LauncherDiagnostics.SelfPath + ".old")) File.Delete(LauncherDiagnostics.SelfPath + ".old");
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { LauncherDiagnostics.Info("Update leftovers kept: " + exception.Message); }
     }

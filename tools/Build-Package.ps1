@@ -15,6 +15,8 @@ Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $dist = Join-Path $repo 'dist'; $staging = Join-Path $dist '_staging'
 if (-not (Test-Path -LiteralPath $Patchset)) { throw "Patch data not found: $Patchset. Run tools\Build-Patchset.ps1 first." }
+. (Join-Path $PSScriptRoot 'Patchset-Inputs.ps1')
+Assert-PatchsetCurrent $repo $Patchset
 $names = @{ 'win-x64' = 'Windows_x64'; 'linux-x64' = 'Linux_x64'; 'osx-arm64' = 'macOS_arm64'; 'osx-x64' = 'macOS_x64' }
 $packageName = 'Gears3_Multipatch_Launcher'
 $version = ([xml](Get-Content -LiteralPath (Join-Path $repo 'GoW3Jacinto_Launcher.csproj') -Raw)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1

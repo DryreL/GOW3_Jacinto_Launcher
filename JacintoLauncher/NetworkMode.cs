@@ -16,6 +16,8 @@ internal static class NetworkMode
 {
     internal const string Offline = "Offline";
     internal const string Steam = "Steam";
+    /// <summary>LAN co-op without Steam: the Campaign listens on port 7777 (as with Steam) and JacintoNet is parked (as Offline). A friend joins with "open &lt;IP&gt;:7777".</summary>
+    internal const string Lan = "LAN";
     internal static readonly string[] JacintoNetFiles = { "wsock32.dll", "steam_api64.dll" };
 
     // Same bytes as Multipatch step 30 ($ListenOld / $ListenNew).
@@ -87,14 +89,15 @@ internal static class NetworkMode
                 if (!state.DllsInstalled[i] && SteamSource(gameDir, JacintoNetFiles[i]) is null)
                     throw new FileNotFoundException("JacintoNet file not available for Steam mode: " + JacintoNetFiles[i]);
         }
-        else if (mode == Offline)
+        else if (mode == Offline || mode == Lan)
         {
             foreach (var name in JacintoNetFiles)
             {
                 var installed = Path.Combine(BinariesDir(gameDir), name);
                 var parked = Path.Combine(ParkingDir(gameDir), name);
                 if (File.Exists(installed) && File.Exists(parked) && Hash(installed) != Hash(parked))
-                    throw new InvalidDataException("Binaries\\Win64\\" + name + " differs from the parked JacintoNet copy. It was left untouched.");
+                    throw new UserActionException("Binaries\\Win64\\" + name + " is not the JacintoNet file the launcher parked: another mod or a manual JacintoNet update replaced it, so it was left untouched. "
+                        + "If it is a newer JacintoNet, delete " + parked + " and try again; if it belongs to another mod, remove that mod first or use Repair in Settings.");
             }
         }
         else throw new ArgumentException("Unknown network mode: " + mode);
@@ -118,7 +121,7 @@ internal static class NetworkMode
         }
         else
         {
-            SetCampaignUrl(gameDir, listen: false);
+            SetCampaignUrl(gameDir, listen: mode == Lan);
             Directory.CreateDirectory(ParkingDir(gameDir));
             foreach (var name in JacintoNetFiles)
             {

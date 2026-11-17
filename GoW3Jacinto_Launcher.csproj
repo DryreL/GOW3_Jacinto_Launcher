@@ -20,9 +20,9 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <!-- Measured on Windows: 174 MB becomes 69 MB and the window opens 90 ms later (760 ms against 670 ms).
          Partial trimming removes unused framework code only. The JSON and COM features this code uses are kept on. -->
-    <!-- Not on Windows: Kaspersky, Avast and AVG flagged the compressed bundle as a packed trojan (VHO:Trojan.Win32.Yephiler.gen,
-         Win64:MalwareX-gen). Uncompressed, the executable is larger but its contents are plain to scanners. -->
-    <EnableCompressionInSingleFile Condition="!$(RuntimeIdentifier.StartsWith('win'))">true</EnableCompressionInSingleFile>
+    <!-- On for Windows again (v0.4.2): Kaspersky's Yephiler detection was the JacintoNet wsock32.dll inside the embedded patch
+         data (exe//GoW3Jacinto_Launcher.dll//data0001.res//file), not the compression. -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>partial</TrimMode>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
@@ -35,7 +35,7 @@
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <TieredPGO>false</TieredPGO>
     <!-- File metadata: unidentified binaries score worse with antivirus heuristics. -->
-    <Version>0.4.1</Version>
+    <Version>0.4.2</Version>
     <Company>Project Jacinto Community</Company>
     <Product>Gears of War 3 Jacinto Multipatch Launcher</Product>
     <AssemblyTitle>Gears of War 3 Jacinto Multipatch Launcher</AssemblyTitle>

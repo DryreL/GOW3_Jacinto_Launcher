@@ -5,7 +5,25 @@ Game: Gears of War 3 Jacinto Build v1.1.1
 NexusMods Page: https://www.nexusmods.com/gearsofwar3/mods/27
 =================================================================
 
-v0.4.1
+v0.4.2 (17 Nov 2026, 07:05 PM)
+- Antivirus: Kaspersky no longer deletes JacintoNet (wsock32.dll) as VHO:Trojan.Win32.Yephiler.gen, which also flagged the launcher that carries it. The DLL is built without its version resource; the code is unchanged. Also, the launcher no longer reads every Steam user's config at startup (Steam Input is turned off when you press Play on Steam instead), and no longer trims its own memory with SetProcessWorkingSetSize when minimized.
+- The Windows executable is compressed again, so the download is smaller.
+- LAN co-op is back, with no extra button: Play Offline and Play on Steam both accept a player from the same house. The host starts a Campaign chapter, the other player opens the console (~) and types open <host IP>:7777. Play Offline used to start the Campaign without a listen server, so a LAN friend got "Connection lost". Two players in the same house on Steam co-op could get "Connection lost" too; joining by LAN address does not use Steam.
+- What's New on Home can be expanded with Show all to read every change of the version.
+- Quit in the menu asks before closing the launcher.
+- Release check: Build.bat and Release.bat stop when the patch data is older than the Multipatch tool, JacintoNet or its build script, so a release can no longer go out with outdated fixes (v0.4.1 shipped without its Ghost Town truck fix and JacintoNet build this way; both are in this version).
+- Fixed "Scripts are outdated" at game start that Yes could not fix: the launcher now dates the script packages after the source files before each Play, so the game no longer asks. Nothing in the files changes.
+- Fixed the installation audit reporting values such as LoadMapTimeLimit=20,0 or 20.000000 as wrong when they equal 20 (Windows with a comma as decimal separator, other tools writing the game's ini files).
+- Save backup before Play: a backup that fails (a locked or missing save file, a full disk) no longer stops the game from starting; it is written to the log.
+- Fixed the launcher quitting without a word when a file was dropped onto it, or it was started with a file as argument.
+- macOS: fixed a crash at start when the one-launcher-at-a-time check could not be used; the launcher now runs without it.
+- Steam Deck / Linux (Proton): fixed restart, update and shortcut paths pointing to a folder instead of the launcher when Proton did not report the launcher's own path.
+- Files another program briefly holds open (a virus scan of a file just written, OneDrive or another sync tool, a second launcher) are tried again for a few seconds instead of failing at once: settings, updates, mode changes, save backups.
+- Clearer messages instead of bare errors: a file held open by another program, a dropped internet connection, a folder the launcher may not write to, Steam not running, a game file changed by another mod (with the Steam "Verify integrity of game files" steps), a damaged safety copy at Uninstall, a wsock32.dll from another mod, start options the game cannot use, a missing graphics.json. These are no longer sent as launcher errors.
+- Error reports: a player name of one or two characters no longer blanks out every matching character in the report; harmless missing-DLL notices from Wine / Proton are no longer sent.
+- FAQ: LAN co-op, "Connection lost" in the same house and "Scripts are outdated".
+
+v0.4.1 (15 Nov 2026, 10:27 AM)
 - Act 3 Chapter 4 (Ghost Town) invisible cover / shot blocker at the gas pumps fixed: after the intro cinematic, Dizzy's cargo truck next to the white van was hidden while its collision and cover stayed, so you could take cover against nothing and shots hit an invisible object. The truck is visible again (SP_Mercy_01_IntroTrucks.gear, one byte, reverted on uninstall). The same hidden truck at the gas station fight at the end of Mercy (SP_Mercy_01_S_Showdown.gear) is fixed too. A checkpoint saved before the fix keeps the truck hidden: restart the chapter. Found and tested in game by conjuntovazio (thanks!).
 - Linux / Steam Deck / macOS: the game folder now always has both start scripts, Gears3_Start_Game.bat and Gears3_Start_Game.sh (and the Debug versions), whichever system the Multipatch was installed on. A missing one is written at install and before each Play with the same settings, Settings keeps all of them up to date, and Uninstall removes the ones the launcher wrote.
 - Exit button at the bottom of the menu. On large scaled displays (for example 4K at 300%) the title bar can be off screen; Exit closes the launcher for real, like Exit in the tray menu.

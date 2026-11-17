@@ -49,7 +49,13 @@ internal static class Program
             }
         }
         // One launcher at a time, unless Settings allows more: a second start asks the first to show itself and quits.
-        using var single = new System.Threading.Mutex(false, @"Local\GoW3JacintoLauncher.Instance", out var first);
+        // Named mutexes live in a temp folder on macOS and Linux; where it cannot be used (seen on macOS) the launcher runs without the one-instance rule.
+        System.Threading.Mutex? single = null;
+        var first = true;
+        try { single = new System.Threading.Mutex(false, @"Local\GoW3JacintoLauncher.Instance", out first); }
+        catch (Exception exception) when (exception is System.IO.IOException or UnauthorizedAccessException or System.Threading.WaitHandleCannotBeOpenedException or PlatformNotSupportedException)
+        { LauncherDiagnostics.Info("One-instance check unavailable: " + exception.Message); first = true; }
+        using var _ = single;
         // Named events exist only on Windows (PlatformNotSupportedException elsewhere, which aborted the launcher on Linux / SteamOS).
         // ponytail: on Linux / macOS a second start just quits; add a file-based signal if "bring forward" is wanted there.
         System.Threading.EventWaitHandle? show = null;

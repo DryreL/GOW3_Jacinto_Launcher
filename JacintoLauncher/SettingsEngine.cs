@@ -48,6 +48,18 @@ internal sealed class SettingsEngine
     // ---------------------------------------------------------------- file helpers
     internal static string Hash(string path) { using var s = File.OpenRead(path); return Convert.ToHexString(SHA256.HashData(s)).ToLowerInvariant(); }
     private static bool Same(string? a, string? b) => string.Equals(a, b, Ci);
+    /// <summary>
+    /// An INI value as the engine reads it: 20, 20.0, 20.000000, 20.0f and 20,0 (written by tools on a comma-decimal Windows) are all 20.
+    /// The engine's float parser stops at the comma, so 20,5 reads as 20 and is treated so here.
+    /// </summary>
+    internal static bool SameValue(string? a, string? b) => Same(a, b) || (IniNumber(a) is { } x && IniNumber(b) is { } y && x == y);
+    private static double? IniNumber(string? text)
+    {
+        var trimmed = (text ?? "").Trim().TrimEnd('f', 'F');
+        var comma = trimmed.IndexOf(',');
+        if (comma >= 0) trimmed = trimmed[..comma];
+        return Regex.IsMatch(trimmed, @"^[+-]?(\d+\.?\d*|\.\d+)$") && double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ? value : null;
+    }
     private static bool SamePath(string a, string b) => string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
     private static string Bool(bool value) => value ? "True" : "False";
 
@@ -236,7 +248,7 @@ internal sealed class SettingsEngine
     {
         if (!File.Exists(Path.Combine(binariesDir, "GearGame.exe"))) throw new UserActionException("Binaries\\Win64\\GearGame.exe is missing from the game folder. Choose the folder that has Binaries and GearGame in it.");
         if (GameLayout.StartScript(root) is null) throw new UserActionException("Gears3_Start_Game.bat is missing from the game folder. Install the Multipatch on the Home screen.");
-        if (!File.Exists(graphicsPath)) throw new FileNotFoundException("Multipatch graphics.json is missing.");
+        if (!File.Exists(graphicsPath)) throw new UserActionException("The Multipatch settings file (graphics.json) is missing. Install the Multipatch on the Home screen, or use Settings > Repair files.");
         if (writing && GameLayout.GameRunning()) throw new UserActionException("Close GearGame before applying settings.");
         var journalPath = Path.Combine(filesDir, "installation-state.json");
         if (File.Exists(journalPath))
@@ -250,7 +262,7 @@ internal sealed class SettingsEngine
 
     // ---------------------------------------------------------------- transactions
     private string ManifestPath(string id) => Path.Combine(txRoot, id, "transaction.json");
-    private void SaveTransaction(JsonObject tx) => File.WriteAllText(ManifestPath(Str(tx, "Id")), tx.ToJsonString(Pretty), Utf8);
+    private void SaveTransaction(JsonObject tx) => LauncherDiagnostics.Retry(() => File.WriteAllText(ManifestPath(Str(tx, "Id")), tx.ToJsonString(Pretty), Utf8));
 
     private JsonObject NewTransaction(string kind, IEnumerable<string> targets)
     {
@@ -301,7 +313,7 @@ internal sealed class SettingsEngine
 
     private JsonObject Transact(string kind, IEnumerable<string> targets, Action body)
     {
-        using var applyLock = new FileStream(Path.Combine(txRoot, "apply.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        using var applyLock = LauncherDiagnostics.Retry(() => new FileStream(Path.Combine(txRoot, "apply.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None));
         var tx = NewTransaction(kind, targets);
         try
         {
@@ -356,7 +368,7 @@ internal sealed class SettingsEngine
         var incomplete = Directory.GetDirectories(txRoot).Select(d => Path.Combine(d, "transaction.json")).Where(File.Exists).Select(p => ReadJsonObject(p))
             .Where(tx => Str(tx, "Status") == "applying" && SamePath(Str(tx, "GameRoot"), root)).ToArray();
         if (incomplete.Length == 0) return;
-        using var applyLock = new FileStream(Path.Combine(txRoot, "apply.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        using var applyLock = LauncherDiagnostics.Retry(() => new FileStream(Path.Combine(txRoot, "apply.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None));
         foreach (var tx in incomplete)
         {
             var allowed = AllowedTargets(Str(tx, "Kind"));
@@ -544,11 +556,11 @@ internal sealed class SettingsEngine
             foreach (var (key, actual, expected) in rows)
             {
                 if (actual is null) { if (isPrimary) { allMatch = false; fileMatch = false; Miss(path, key, null, expected); } }
-                else if (!Same(actual, expected)) { allMatch = false; fileMatch = false; Miss(path, key, actual, expected); }
+                else if (!SameValue(actual, expected)) { allMatch = false; fileMatch = false; Miss(path, key, actual, expected); }
             }
             // A secondary file may simply not have these keys until the first Apply.
-            foreach (var (key, whenHdd, whenSsd) in StreamingRows) if (GetIniValue(text, "TextureStreaming", key) is var value && (value is not null || isPrimary) && !Same(value, hdd ? whenHdd : whenSsd)) { allMatch = false; Miss(path, key, value, hdd ? whenHdd : whenSsd); }
-            foreach (var (effect, keys) in Effects) foreach (var key in keys) if (GetIniValue(text, "SystemSettings", key) is var value && (value is not null || disabled.Contains(effect, StringComparer.OrdinalIgnoreCase)) && !Same(value, Bool(!disabled.Contains(effect, StringComparer.OrdinalIgnoreCase)))) { allMatch = false; Miss(path, key, value, Bool(!disabled.Contains(effect, StringComparer.OrdinalIgnoreCase))); }
+            foreach (var (key, whenHdd, whenSsd) in StreamingRows) if (GetIniValue(text, "TextureStreaming", key) is var value && (value is not null || isPrimary) && !SameValue(value, hdd ? whenHdd : whenSsd)) { allMatch = false; Miss(path, key, value, hdd ? whenHdd : whenSsd); }
+            foreach (var (effect, keys) in Effects) foreach (var key in keys) if (GetIniValue(text, "SystemSettings", key) is var value && (value is not null || disabled.Contains(effect, StringComparer.OrdinalIgnoreCase)) && !SameValue(value, Bool(!disabled.Contains(effect, StringComparer.OrdinalIgnoreCase)))) { allMatch = false; Miss(path, key, value, Bool(!disabled.Contains(effect, StringComparer.OrdinalIgnoreCase))); }
             var textureRows = Regex.Matches(text, @"(?m)^TEXTUREGROUP_(?:World|WorldNormalMap|Character|CharacterNormalMap|Weapon|WeaponNormalMap|Vehicle|VehicleNormalMap)=\([^\r\n]*LODBias=-?\d+[^\r\n]*\)");
             foreach (Match row in textureRows) if (Regex.Match(row.Value, @"LODBias=(-?\d+)").Groups[1].Value is var bias && bias != lod) { allMatch = false; fileMatch = false; Miss(path, row.Value.Split('=')[0] + " LODBias", bias, lod); }
             if (isPrimary && textureRows.Count == 0) { allMatch = false; fileMatch = false; Miss(path, "TEXTUREGROUP LODBias", null, lod); }
@@ -562,7 +574,7 @@ internal sealed class SettingsEngine
             var text = File.ReadAllText(path);
             var baseFov = Regex.Match(text, @"(?m)^BaseFOV=([^\r\n]*)");
             var values = On(s, "FovAllModes") ? Regex.Matches(text, @"(?m)^FOVAngle=([^\r\n]*)").Select(m => (string?)m.Groups[1].Value).ToArray() : new[] { GetIniValue(text, "GearGame.GameplayCam_Default", "FOVAngle") };
-            var ok = (!baseFov.Success || Same(baseFov.Groups[1].Value, fov)) && values.Length > 0 && values.All(v => Same(v, fov));
+            var ok = (!baseFov.Success || SameValue(baseFov.Groups[1].Value, fov)) && values.Length > 0 && values.All(v => SameValue(v, fov));
             if (!ok && SamePath(path, primaryCamera)) { allMatch = false; Miss(path, "FOV", baseFov.Success ? baseFov.Groups[1].Value : values.FirstOrDefault(), fov); }
             states.Add(new JsonObject { ["File"] = path, ["ExpectedFov"] = fov, ["Matches"] = ok });
         }
@@ -582,14 +594,14 @@ internal sealed class SettingsEngine
         foreach (var path in EngineFiles())
         {
             var text = File.ReadAllText(path);
-            foreach (var section in new[] { "XAudio2.XAudio2Device", "ALAudio.ALAudioDevice" }) if (GetIniValue(text, section, "MaxChannels") is { } value && !Same(value, channels)) { allMatch = false; Miss(path, "MaxChannels", value, channels); }
+            foreach (var section in new[] { "XAudio2.XAudio2Device", "ALAudio.ALAudioDevice" }) if (GetIniValue(text, section, "MaxChannels") is { } value && !SameValue(value, channels)) { allMatch = false; Miss(path, "MaxChannels", value, channels); }
         }
         var execOk = usesExec ? File.Exists(audioExecPath) && File.ReadAllText(audioExecPath) == audioCommands : !File.Exists(audioExecPath);
         if (!execOk) { allMatch = false; Miss(audioExecPath, "audio commands", null, usesExec ? "the volume and filter commands" : "no file"); }
         foreach (var path in PawnFiles())
         {
             var text = File.ReadAllText(path);
-            foreach (var (section, stock) in RunShake) if (GetIniValue(text, section, "RoadieRunShakyCamDampeningFactor") is { } value && !Same(value, On(s, "DisableRunShake") ? "0.0f" : stock)) { allMatch = false; Miss(path, "RoadieRunShakyCamDampeningFactor", value, On(s, "DisableRunShake") ? "0.0f" : stock); }
+            foreach (var (section, stock) in RunShake) if (GetIniValue(text, section, "RoadieRunShakyCamDampeningFactor") is { } value && !SameValue(value, On(s, "DisableRunShake") ? "0.0f" : stock)) { allMatch = false; Miss(path, "RoadieRunShakyCamDampeningFactor", value, On(s, "DisableRunShake") ? "0.0f" : stock); }
         }
         var menuDisabled = On(s, "HordeBeast") ? "false" : "true";
         foreach (var path in MenuFiles())

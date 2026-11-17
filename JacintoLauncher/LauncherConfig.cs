@@ -123,7 +123,7 @@ public class LauncherConfig
 		try
 		{
 			File.WriteAllText(temporary, json);
-			File.Move(temporary, destination, true);
+			LauncherDiagnostics.Retry(() => File.Move(temporary, destination, true));
 		}
 		finally
 		{

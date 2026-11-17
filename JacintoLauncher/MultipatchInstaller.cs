@@ -274,7 +274,10 @@ internal static class MultipatchInstaller
                 if (entry.Delta) ApplyDelta(blob, beforeOverride ?? target, output);
                 else blob.CopyTo(output);
             }
-            if (!Hash(temporary).Equals(entry.After, StringComparison.OrdinalIgnoreCase)) throw new IOException("Patched file failed verification: " + entry.Path);
+            // A delta only fits the original file: anything else means another mod or a damaged download changed it.
+            if (!Hash(temporary).Equals(entry.After, StringComparison.OrdinalIgnoreCase)) throw new UserActionException(entry.Delta
+                ? "The game file " + entry.Path + " is not the original one (another mod changed it, or it is damaged), so the patch cannot be applied to it. In Steam: right-click Gears of War 3 > Properties > Installed Files > Verify integrity of game files (or restore the files from your own backup), then install the Multipatch again."
+                : "Patched file failed verification: " + entry.Path + ". The disk may be full or failing, or an antivirus changed the file; check them and install again.");
             ReplaceFile(temporary, target);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
@@ -309,8 +312,8 @@ internal static class MultipatchInstaller
     // A launcher left open in the game folder holds its own file, which both restoring and installing must replace.
     private static void AssertLauncherFree(string game)
     {
-        var installed = Path.Combine(LayoutDir(game), "Launcher", Path.GetFileName(Environment.ProcessPath!));
-        if (!File.Exists(installed) || string.Equals(Path.GetFullPath(installed), Environment.ProcessPath, StringComparison.OrdinalIgnoreCase)) return;
+        var installed = Path.Combine(LayoutDir(game), "Launcher", Path.GetFileName(LauncherDiagnostics.SelfPath));
+        if (!File.Exists(installed) || string.Equals(Path.GetFullPath(installed), LauncherDiagnostics.SelfPath, StringComparison.OrdinalIgnoreCase)) return;
         try { using var _ = new FileStream(installed, FileMode.Open, FileAccess.ReadWrite, FileShare.None); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { throw new UserActionException("Close the launcher that is open from the game folder, then try again. No files were changed."); }
     }
@@ -320,8 +323,12 @@ internal static class MultipatchInstaller
     {
         game = Path.TrimEndingDirectorySeparator(Path.GetFullPath(game));
         AssertPlain(game);
-        using var mutex = new Mutex(false, "Local\\JacintoInstall-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(game.ToLowerInvariant()))));
-        if (!mutex.WaitOne(0)) throw new UserActionException("Another installation is already running for this game.");
+        // Where named mutexes cannot be made (seen on macOS) the guard is skipped; the journal still protects a half-done install.
+        Mutex? mutex = null;
+        try { mutex = new Mutex(false, "Local\\JacintoInstall-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(game.ToLowerInvariant())))); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or WaitHandleCannotBeOpenedException or PlatformNotSupportedException) { LauncherDiagnostics.Info("Install lock unavailable: " + exception.Message); }
+        using var _ = mutex;
+        if (mutex is not null && !mutex.WaitOne(0)) throw new UserActionException("Another installation is already running for this game.");
         if (GameLayout.GameRunning()) throw new UserActionException("Close the game before installing.");
         AssertLauncherFree(game);
         if (File.Exists(IdentityPath(game))) throw new UserActionException("The Jacinto launcher is already installed here. Use Uninstall Multipatch on the Home screen first to reinstall.");
@@ -562,7 +569,7 @@ internal static class MultipatchInstaller
         var patchset = FindPackagedPatchset(exeDir, true) ?? throw new FileNotFoundException("The launcher package holds no patch data.");
         try
         {
-            var offline = NetworkMode.Read(game).Describe() == NetworkMode.Offline;
+            var keptMode = NetworkMode.Read(game).Describe(); // Offline and LAN are put back after the files are rewritten.
             var gamepad = UsesGamepad(game);
             var hud = UsesHudScaling(game);
             var index = Path.Combine(OriginalsDir(game), "originals.json");
@@ -616,7 +623,7 @@ internal static class MultipatchInstaller
                 var parked = Path.Combine(NetworkMode.ParkingDir(game), name);
                 if (File.Exists(installed) && File.Exists(parked) && entries.Any(e => Resolve(game, e.Path) == installed && e.After.Equals(Hash(installed), StringComparison.OrdinalIgnoreCase))) File.Delete(parked);
             }
-            if (offline) NetworkMode.Apply(game, NetworkMode.Offline);
+            if (keptMode is NetworkMode.Offline or NetworkMode.Lan) NetworkMode.Apply(game, keptMode);
             MultipatchBridge.ApplyHdCaps(game);
             if (oldLayout)
             {
@@ -659,7 +666,7 @@ internal static class MultipatchInstaller
 #pragma warning disable IL3000 // An empty location is exactly what is being asked.
         var singleFile = string.IsNullOrEmpty(typeof(MultipatchInstaller).Assembly.Location);
 #pragma warning restore IL3000
-        var files = singleFile ? new[] { Environment.ProcessPath!, Path.Combine(launcherSource, "GoW3Jacinto_Launcher.json"), Path.Combine(launcherSource, "languages.csv") }.Where(File.Exists)
+        var files = singleFile ? new[] { LauncherDiagnostics.SelfPath, Path.Combine(launcherSource, "GoW3Jacinto_Launcher.json"), Path.Combine(launcherSource, "languages.csv") }.Where(File.Exists)
             : Directory.EnumerateFiles(launcherSource, "*", SearchOption.AllDirectories).Where(f => Path.GetFileName(f) != PatchsetName);
         foreach (var file in files)
         {
@@ -673,7 +680,7 @@ internal static class MultipatchInstaller
 
     private static string? CreateShortcut(string game)
     {
-        var executable = Path.Combine(LayoutDir(game), "Launcher", Path.GetFileName(Environment.ProcessPath!));
+        var executable = Path.Combine(LayoutDir(game), "Launcher", Path.GetFileName(LauncherDiagnostics.SelfPath));
         var desktop = Environment.GetEnvironmentVariable("JACINTO_TEST_DESKTOP") ?? Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory, Environment.SpecialFolderOption.Create);
         if (string.IsNullOrEmpty(desktop)) return null;
         Directory.CreateDirectory(desktop);
@@ -725,7 +732,7 @@ internal static class MultipatchInstaller
             foreach (var copy in copies)
             {
                 var source = Path.Combine(OriginalsDir(game), copy.Path);
-                if (!File.Exists(source) || Hash(source) != copy.Hash) throw new IOException("Safety copy failed verification: " + copy.Path);
+                if (!File.Exists(source) || Hash(source) != copy.Hash) throw new UserActionException("The safety copy of " + copy.Path + " made at install is missing or damaged, so the original cannot be put back. In Steam: right-click Gears of War 3 > Properties > Installed Files > Verify integrity of game files (or restore the files from your own backup), then run Uninstall again.");
             }
             log($"Restoring {copies.Length} original file(s)...");
             foreach (var copy in copies)
@@ -874,7 +881,7 @@ internal static class MultipatchInstaller
     internal static void Repair(string game, IEnumerable<Entry> damaged, Action<string> log)
     {
         if (GameLayout.GameRunning()) throw new UserActionException("Close the game before repairing.");
-        var offline = NetworkMode.Read(game).Describe() == NetworkMode.Offline;
+        var keptMode = NetworkMode.Read(game).Describe(); // Offline and LAN are put back after the files are rewritten.
         var gamepad = UsesGamepad(game);
         var hud = UsesHudScaling(game);
         var (zip, _) = Open(InstalledPatchset(game));
@@ -890,7 +897,7 @@ internal static class MultipatchInstaller
             }
         if (!hud && CanSwitchHud(game)) SetHudScaling(game, false);
         if (gamepad && CanSwitchInput(game)) SetInput(game, true);
-        if (offline) NetworkMode.Apply(game, NetworkMode.Offline);
+        if (keptMode is NetworkMode.Offline or NetworkMode.Lan) NetworkMode.Apply(game, keptMode);
     }
 
     /// <summary>Headless forms for build scripts and tests. Null when <paramref name="args"/> is not one of them.</summary>
@@ -899,7 +906,8 @@ internal static class MultipatchInstaller
         try
         {
             if (args.Length >= 4 && args[0] == "--build-patchset") return BuildPatchset(args[1], args[2], args[3], args.Length > 4 ? args[4] : null);
-            if (args.Length == 0) return null;
+            // Anything else (a file or folder dropped on the launcher, "Open with") starts the launcher as usual; it used to stop it silently.
+            if (args.Length == 0 || args[0] is not ("--install" or "--uninstall" or "--upgrade" or "--input" or "--hud" or "--verify" or "--repair")) return null;
             var exeDir = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
             var game = args.Length > 1 ? args[1] : GameLayout.ResolveGameDir(exeDir);
             if (game is null) throw new DirectoryNotFoundException("Game installation was not detected.");

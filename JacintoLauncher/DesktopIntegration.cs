@@ -110,7 +110,7 @@ internal static class SteamShortcut
         var root = SteamRoot() ?? throw new DirectoryNotFoundException("Steam was not found.");
         var accounts = Path.Combine(root, "userdata");
         var directories = Directory.Exists(accounts) ? Directory.GetDirectories(accounts).Where(d => Path.GetFileName(d).All(char.IsDigit) && Path.GetFileName(d) != "0").ToArray() : Array.Empty<string>();
-        if (directories.Length == 0) throw new DirectoryNotFoundException("No Steam account was found on this PC. Sign in to Steam once.");
+        if (directories.Length == 0) throw new UserActionException("No Steam account was found on this PC. Start Steam and sign in once, then try again.");
         foreach (var account in directories)
         {
             var config = Path.Combine(account, "config");
@@ -123,7 +123,9 @@ internal static class SteamShortcut
             File.WriteAllBytes(temporary, result);
             File.Move(temporary, path, true);
         }
-        TurnOffSteamInput(AppId("\"" + executable + "\"", AppName));
+        // The library entry is in; Steam Input is a nicety and a localconfig.vdf it cannot read must not undo the Add.
+        try { TurnOffSteamInput(AppId("\"" + executable + "\"", AppName)); }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException) { LauncherDiagnostics.Info("Steam Input was not turned off: " + exception.Message); }
         return directories.Length;
     }
 

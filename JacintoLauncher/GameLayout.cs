@@ -74,6 +74,34 @@ internal static class GameLayout
         return written;
     }
 
+    /// <summary>
+    /// The Jacinto build is a development build: when it finds UnrealScript sources (Development\Src\*.uc) newer than the compiled
+    /// packages (*.u), it asks "Scripts are outdated. Would you like to rebuild now?". Yes cannot work on a player's PC (there is no
+    /// compiler), and the game does not start properly. Unpacking an archive or copying the game gives the sources a newer date than the
+    /// packages; the packages themselves are fine. This gives every package a date after the newest source, so the question never comes.
+    /// Only dates change, never contents. Returns the number of packages changed.
+    /// </summary>
+    internal static int FreshenScriptDates(string gameDir)
+    {
+        var sources = Path.Combine(gameDir, "Development", "Src");
+        if (!Directory.Exists(sources)) return 0;
+        var newest = Directory.EnumerateFiles(sources, "*.uc", SearchOption.AllDirectories).Select(File.GetLastWriteTimeUtc).DefaultIfEmpty(DateTime.MinValue).Max();
+        if (newest == DateTime.MinValue) return 0;
+        var stamp = newest.AddMinutes(1);
+        var changed = 0;
+        foreach (var folder in Directory.EnumerateDirectories(gameDir, "Script", SearchOption.AllDirectories).Where(d => !d.StartsWith(sources, StringComparison.OrdinalIgnoreCase)))
+            foreach (var package in Directory.EnumerateFiles(folder, "*.u"))
+                if (File.GetLastWriteTimeUtc(package) <= newest)
+                {
+                    var attributes = File.GetAttributes(package);
+                    if (attributes.HasFlag(FileAttributes.ReadOnly)) File.SetAttributes(package, attributes & ~FileAttributes.ReadOnly);
+                    File.SetLastWriteTimeUtc(package, stamp);
+                    if (attributes.HasFlag(FileAttributes.ReadOnly)) File.SetAttributes(package, attributes);
+                    changed++;
+                }
+        return changed;
+    }
+
     /// <summary>Removes the start scripts <see cref="EnsureStartScripts"/> wrote; the Multipatch's own scripts stay.</summary>
     internal static void RemoveCreatedStartScripts(string gameDir)
     {
